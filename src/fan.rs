@@ -1,7 +1,10 @@
 use anyhow::{Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::thread;
+use std::time::Duration;
 
+#[allow(dead_code)]
 pub const NCT5584D_CHIP_ID: u16 = 0xd42a;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,32 +70,42 @@ impl FanHeader {
 }
 
 pub enum Backend {
-    Direct,
     DevPort(File),
+    Direct,
 }
 
 impl Backend {
     pub fn new() -> Result<Self> {
-        unsafe {
-            if libc::iopl(3) == 0 {
-                return Ok(Backend::Direct);
-            }
-        }
-
-        // Fallback to /dev/port
+        // Try /dev/port first: operates at kernel level and covers all ports up to 0xFFFF,
+        // unlike ioperm which is limited to 0x3FF (cannot reach HWM ports 0x0A25/0x0A26).
         match OpenOptions::new().read(true).write(true).open("/dev/port") {
             Ok(file) => Ok(Backend::DevPort(file)),
             Err(e) => {
-                bail!(
-                    "Port I/O access failed: {}. Root privileges (su/sudo or CAP_SYS_RAWIO) required.",
-                    e
-                );
+                // Fallback to ioperm
+                unsafe {
+                    let r1 = libc::ioperm(0x2e, 2, 1);
+                    let r2 = libc::ioperm(0x4e, 2, 1);
+                    if r1 == 0 && r2 == 0 {
+                        Ok(Backend::Direct)
+                    } else {
+                        bail!(
+                            "Port I/O access failed: cannot open /dev/port ({}) and ioperm failed. Root privileges (doas/su) required.",
+                            e
+                        );
+                    }
+                }
             }
         }
     }
 
     pub fn read_byte(&mut self, port: u16) -> Result<u8> {
         match self {
+            Backend::DevPort(file) => {
+                file.seek(SeekFrom::Start(port as u64))?;
+                let mut buf = [0u8; 1];
+                file.read_exact(&mut buf)?;
+                Ok(buf[0])
+            }
             Backend::Direct => unsafe {
                 let val: u8;
                 std::arch::asm!(
@@ -103,17 +116,16 @@ impl Backend {
                 );
                 Ok(val)
             },
-            Backend::DevPort(file) => {
-                file.seek(SeekFrom::Start(port as u64))?;
-                let mut buf = [0u8; 1];
-                file.read_exact(&mut buf)?;
-                Ok(buf[0])
-            }
         }
     }
 
     pub fn write_byte(&mut self, port: u16, val: u8) -> Result<()> {
         match self {
+            Backend::DevPort(file) => {
+                file.seek(SeekFrom::Start(port as u64))?;
+                file.write_all(&[val])?;
+                Ok(())
+            }
             Backend::Direct => unsafe {
                 std::arch::asm!(
                     "out dx, al",
@@ -123,12 +135,11 @@ impl Backend {
                 );
                 Ok(())
             },
-            Backend::DevPort(file) => {
-                file.seek(SeekFrom::Start(port as u64))?;
-                file.write_all(&[val])?;
-                Ok(())
-            }
         }
+    }
+
+    fn io_delay(&self) {
+        thread::sleep(Duration::from_micros(10));
     }
 }
 
@@ -147,13 +158,13 @@ impl SuperIo {
     pub fn open() -> Result<Self> {
         let mut backend = Backend::new()?;
 
-        // Test port pairs: 0x4E/0x4F then 0x2E/0x2F
+        // Probing 0x4E/0x4F then 0x2E/0x2F
         let port_candidates = [(0x4Eu16, 0x4Fu16), (0x2Eu16, 0x2Fu16)];
         let mut selected = None;
 
         for (reg, val) in port_candidates {
             if let Ok(id) = Self::read_chip_id(&mut backend, reg, val) {
-                if id == NCT5584D_CHIP_ID || (id & 0xFFF0) == (NCT5584D_CHIP_ID & 0xFFF0) {
+                if id != 0 && id != 0xFFFF {
                     selected = Some((reg, val, id));
                     break;
                 }
@@ -163,8 +174,9 @@ impl SuperIo {
         let (reg_port, val_port, chip_id) = match selected {
             Some(s) => s,
             None => {
-                let id = Self::read_chip_id(&mut backend, 0x4E, 0x4F).unwrap_or(0);
-                (0x4E, 0x4F, id)
+                bail!(
+                    "Super I/O chip not detected at ports 0x4E or 0x2E (read returned 0xFFFF / no response). Ensure kernel allows port I/O."
+                );
             }
         };
 
@@ -172,10 +184,12 @@ impl SuperIo {
         Self::disable_io_space_lock(&mut backend, reg_port, val_port)?;
 
         // Query Hardware Monitor (HWM) Base Address from Logical Device 0x0B
-        backend.write_byte(reg_port, 0x87)?; // Enter config mode
         backend.write_byte(reg_port, 0x87)?;
+        backend.write_byte(reg_port, 0x87)?;
+        backend.io_delay();
         backend.write_byte(reg_port, 0x07)?; // Select Logical Device Number
         backend.write_byte(val_port, 0x0B)?; // LDN 11 (Hardware Monitor)
+        backend.io_delay();
         backend.write_byte(reg_port, 0x60)?; // Base Address MSB
         let base_hi = backend.read_byte(val_port)?;
         backend.write_byte(reg_port, 0x61)?; // Base Address LSB
@@ -183,11 +197,15 @@ impl SuperIo {
         backend.write_byte(reg_port, 0xAA)?; // Exit config mode
 
         let hwm_base = ((base_hi as u16) << 8) | (base_lo as u16);
-        let (hwm_index_port, hwm_data_port) = if hwm_base != 0 && hwm_base != 0xFFFF {
-            (hwm_base + 5, hwm_base + 6)
-        } else {
-            (0x0A25, 0x0A26) // Fallback from Colorful decompiled code (2597 / 2598)
-        };
+        if hwm_base == 0 || hwm_base == 0xFFFF {
+            bail!(
+                "Failed to read Hardware Monitor base address from Super I/O LDN 0x0B (got 0x{:04X})",
+                hwm_base
+            );
+        }
+
+        let hwm_index_port = hwm_base + 5;
+        let hwm_data_port = hwm_base + 6;
 
         Ok(Self {
             backend,
@@ -202,6 +220,7 @@ impl SuperIo {
     fn read_chip_id(backend: &mut Backend, reg_port: u16, val_port: u16) -> Result<u16> {
         backend.write_byte(reg_port, 0x87)?;
         backend.write_byte(reg_port, 0x87)?;
+        backend.io_delay();
         backend.write_byte(reg_port, 0x20)?;
         let hi = backend.read_byte(val_port)?;
         backend.write_byte(reg_port, 0x21)?;
@@ -213,6 +232,7 @@ impl SuperIo {
     fn disable_io_space_lock(backend: &mut Backend, reg_port: u16, val_port: u16) -> Result<()> {
         backend.write_byte(reg_port, 0x87)?;
         backend.write_byte(reg_port, 0x87)?;
+        backend.io_delay();
         backend.write_byte(reg_port, 0x28)?;
         let val = backend.read_byte(val_port)?;
         if (val & 0x10) != 0 {
@@ -227,6 +247,7 @@ impl SuperIo {
         let cur = self.backend.read_byte(self.hwm_data_port)?;
         self.backend
             .write_byte(self.hwm_data_port, (cur & 0xF0) | (bank & 0x0F))?;
+        self.backend.io_delay();
         Ok(())
     }
 
@@ -240,6 +261,7 @@ impl SuperIo {
         self.set_bank(bank)?;
         self.backend.write_byte(self.hwm_index_port, reg)?;
         self.backend.write_byte(self.hwm_data_port, val)?;
+        self.backend.io_delay();
         Ok(())
     }
 
