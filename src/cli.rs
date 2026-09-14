@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 
 #[derive(Parser, Debug)]
@@ -60,6 +60,38 @@ pub struct FanArgs {
     pub action: FanAction,
 }
 
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FanProfile {
+    /// Quiet curve for low noise (20°C:20%, 40°C:30%, 60°C:50%, 80°C:85%)
+    Quiet,
+    /// Balanced standard curve (20°C:20%, 40°C:40%, 60°C:60%, 80°C:100%)
+    Standard,
+    /// Maximum cooling performance (100% across all temperatures)
+    Full,
+}
+
+impl FanProfile {
+    pub fn points_for(&self, is_pump: bool) -> [(u8, u8); 4] {
+        let pct = |p: u8| ((p.min(100) as f64) * 2.55).ceil() as u8;
+        match self {
+            FanProfile::Quiet if is_pump => {
+                [(0, pct(80)), (70, pct(80)), (75, pct(100)), (100, pct(100))]
+            }
+            FanProfile::Quiet => [(20, pct(20)), (40, pct(30)), (60, pct(50)), (80, pct(85))],
+            FanProfile::Standard if is_pump => {
+                [(0, pct(80)), (65, pct(80)), (70, pct(100)), (100, pct(100))]
+            }
+            FanProfile::Standard => [(20, pct(20)), (40, pct(40)), (60, pct(60)), (80, pct(100))],
+            FanProfile::Full => [
+                (30, pct(100)),
+                (50, pct(100)),
+                (70, pct(100)),
+                (100, pct(100)),
+            ],
+        }
+    }
+}
+
 #[derive(Subcommand, Debug)]
 pub enum FanAction {
     /// Show current fan RPM speeds, temperatures, and Super I/O status
@@ -78,7 +110,7 @@ pub enum FanAction {
         #[arg(long)]
         pwm: Option<u8>,
     },
-    /// Configure 4-point SmartFan temperature curve
+    /// Configure 4-point SmartFan temperature curve or apply a built-in profile
     SetCurve {
         /// Fan header: 'cpu', 'sys1', 'sys2', 'sys3', 'pump', or 'all'
         #[arg(short = 'f', long)]
@@ -86,7 +118,11 @@ pub enum FanAction {
 
         /// 4 temperature-speed points in format: 'T1:P1,T2:P2,T3:P3,T4:P4' (e.g. '30:20,50:40,70:70,85:100')
         #[arg(short = 'p', long)]
-        points: String,
+        points: Option<String>,
+
+        /// Built-in profile: 'quiet', 'standard', or 'full'
+        #[arg(long, value_enum)]
+        profile: Option<FanProfile>,
     },
 }
 

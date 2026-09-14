@@ -156,26 +156,49 @@ fn handle_fan(args: FanArgs) -> Result<()> {
                 );
             }
         }
-        FanAction::SetCurve { fan, points } => {
-            let parsed_points = parse_curve_points(&points)?;
-
+        FanAction::SetCurve {
+            fan,
+            points,
+            profile,
+        } => {
             let headers: Vec<FanHeader> = if fan.eq_ignore_ascii_case("all") {
                 FanHeader::all().to_vec()
             } else if let Some(h) = FanHeader::from_str(&fan) {
                 vec![h]
             } else {
-                bail!(
-                    "Unknown fan '{}'. Choose from: all, cpu, sys1, sys2, sys3, pump",
-                    fan
-                );
+                bail!("Unknown fan '{fan}'. Choose from: all, cpu, sys1, sys2, sys3, pump",);
             };
 
-            for h in headers {
-                sio.set_fan_curve(h, &parsed_points)?;
-                println!("Configured 4-point SmartFan curve on {}:", h.name());
-                for (i, (t, p)) in parsed_points.iter().enumerate() {
-                    let pct = ((*p as f64 / 255.0) * 100.0).round();
-                    println!("    Point {}: {} °C -> PWM {} (~{}%)", i + 1, t, p, pct);
+            match (points, profile) {
+                (Some(pts_str), None) => {
+                    let parsed_points = parse_curve_points(&pts_str)?;
+                    for h in headers {
+                        sio.set_fan_curve(h, &parsed_points)?;
+                        println!("Configured 4-point SmartFan curve on {}:", h.name());
+                        for (i, (t, p)) in parsed_points.iter().enumerate() {
+                            let pct = ((*p as f64 / 255.0) * 100.0).round();
+                            println!("    Point {}: {} °C -> PWM {} (~{}%)", i + 1, t, p, pct);
+                        }
+                    }
+                }
+                (None, Some(prof)) => {
+                    for h in headers {
+                        let curve = prof.points_for(h == FanHeader::Pump);
+                        sio.set_fan_curve(h, &curve)?;
+                        println!("Applied '{:?}' curve profile on {}:", prof, h.name());
+                        for (i, (t, p)) in curve.iter().enumerate() {
+                            let pct = ((*p as f64 / 255.0) * 100.0).round();
+                            println!("    Point {}: {} °C -> PWM {} (~{}%)", i + 1, t, p, pct);
+                        }
+                    }
+                }
+                (Some(_), Some(_)) => {
+                    bail!("Cannot specify both --points and --profile; choose one");
+                }
+                (None, None) => {
+                    bail!(
+                        "Must specify either --points 'T1:P1,T2:P2,T3:P3,T4:P4' or --profile <quiet|standard|full>"
+                    );
                 }
             }
         }
