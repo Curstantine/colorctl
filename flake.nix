@@ -7,11 +7,6 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-
-    naersk = {
-      url = "github:nix-community/naersk";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs =
@@ -20,52 +15,41 @@
       nixpkgs,
       flake-utils,
       rust-overlay,
-      naersk,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
-          inherit system overlays;
+          inherit system;
+          overlays = [ rust-overlay.overlays.default ];
         };
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [
-            "rust-src"
-            "rust-analyzer"
+        colorctlPkg = pkgs.callPackage ./nix/package.nix { };
+      in
+      {
+        packages.default = colorctlPkg;
+        packages.colorctl = colorctlPkg;
+
+        devShells.default = pkgs.mkShell {
+          buildInputs = [
+            (pkgs.rust-bin.stable.latest.default.override {
+              extensions = [
+                "rust-src"
+                "rust-analyzer"
+              ];
+            })
           ];
         };
 
-        naersk-lib = pkgs.callPackage naersk {
-          cargo = rustToolchain;
-          rustc = rustToolchain;
-        };
-
-        # Dependencies required at run-time.
-        buildInputs = with pkgs; [ ];
-
-        # Dependencies required at build-time.
-        nativeBuildInputs = with pkgs; [ ];
-      in
-      {
-        # Build with: nix build
-        packages.default = naersk-lib.buildPackage {
-          src = ./.;
-          buildInputs = buildInputs;
-          nativeBuildInputs = nativeBuildInputs;
-        };
-
-        # Development shell with: nix develop
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [ rustToolchain ] ++ buildInputs ++ nativeBuildInputs;
-          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
-        };
-
-        # Run checks with: nix flake check
-        checks = {
-          build = self.packages.${system}.default;
-        };
+        checks.build = colorctlPkg;
       }
-    );
+    )
+    // {
+      overlays.default = final: prev: {
+        colorctl = self.packages.${final.system}.default;
+      };
+
+      nixosModules.default = import ./nix/module.nix;
+      nixosModules.colorctl = self.nixosModules.default;
+    };
 }

@@ -1,12 +1,13 @@
 # colorctl
 
-Hardware control utility for **Colorful AMD motherboards** (tested on the **CVN B650M Gaming Frozen V14**), providing RGB lighting and fan curve management.
+Hardware control utility written in Rust for **Colorful AMD motherboards** (tested on the **CVN B650M Gaming Frozen V14**, with broad support across B650/B850/X870 series), providing RGB lighting and fan curve management.
 
 ## Features
 
 - **RGB Lighting** (No root required): Control onboard LEDs, 12V 4-pin RGB headers, and 5V 3-pin ARGB headers via `/dev/hidraw`.
 - **Fan & Pump Control** (Requires root): Read real-time RPMs, monitor motherboard temperature, set manual PWM speeds, configure 4-point SmartFan curves, or apply built-in fan profiles (`quiet`, `standard`, `full`) via the Nuvoton NCT5584D Super I/O.
 - **Shell Completions**: Native completion generation for Bash, Zsh, Fish, PowerShell, and Elvish.
+- **NixOS Module**: Declarative boot/resume service to persist fan curves and RGB settings across reboots, with automatic udev rules.
 
 ## Usage
 
@@ -80,6 +81,61 @@ colorctl completions bash > ~/.local/share/bash-completion/completions/colorctl
 
 ---
 
+## Nix & NixOS
+
+### Run directly with Flakes
+
+```bash
+nix run github:Curstantine/colorctl -- rgb status
+```
+
+### NixOS Module (Persistence across reboots & resume)
+
+To have your preferred fan curve and RGB configuration automatically applied on system boot and resume from suspend:
+
+1. Add `colorctl` to your flake inputs:
+
+    ```nix
+    inputs.colorctl.url = "github:Curstantine/colorctl";
+    ```
+
+2. Import the module and configure the service:
+    ```nix
+    { inputs, ... }:
+    {
+      imports = [ inputs.colorctl.nixosModules.default ];
+
+      services.colorctl = {
+        enable = true;
+
+        # Fan curve configuration
+        fan = {
+          enable = true;
+          header = "all";
+          profile = "quiet"; # "quiet", "standard", or "full"
+          # Or custom points:
+          # customPoints = "30:25,50:45,70:75,85:100";
+        };
+
+        # RGB lighting configuration
+        rgb = {
+          enable = true;
+          channel = "all";
+          color = "cyan"; # color name or hex "#00ff88"
+          brightness = 100;
+        };
+      };
+    }
+    ```
+
+The module automatically:
+
+- Installs `colorctl` with shell completions.
+- Installs udev rules granting unprivileged users access to `/dev/hidraw*` for RGB lighting.
+- Creates a `systemd.services.colorctl` oneshot service that executes on boot and after wake from suspend (`post-resume.target`).
+
+---
+
 ## Note on Compatibility
 
 While this is primary tested on the CVN B650M Gaming Frozen V14, it is designed to work across other B650, B850, and X870 models from Colorful as they share the same underlying Super I/O and USB HID hardware.
@@ -109,7 +165,7 @@ The reverse-engineering was performed on the official **iGame Center Lite** inst
 The installer executable is packaged using **Inno Setup (6.1.0)**. On Linux, extract its contents using `innoextract`:
 
 ```bash
-# Using innoextract directly:
+# Using innoextract directly or via Nix:
 innoextract iGC.Lite-*.exe -d extracted/
 # or with Nix:
 nix run nixpkgs#innoextract -- iGC.Lite-*.exe -d extracted/
