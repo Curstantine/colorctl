@@ -80,8 +80,63 @@ colorctl completions bash > ~/.local/share/bash-completion/completions/colorctl
 
 ---
 
+## Note on Compatibility
+
+While this is only tested to be working on the CVN B650M Gaming Frozen V14, there is a high chance it will work on other B650/B850 models from Colorful (especially the ATX variant of this board) as they share the same underlying hardware.
+
+The following models _might_ be compatible:
+
+- CVN B650 Gaming Frozen V14
+- COLORFIRE B650M-MEOW WIFI Orange
+- BATTLE-AX B650M-PLUS V14 / V15
+- BATTLE-AX B650M-WHITE WIFI V14 / V15
+- CVN B850M Gaming Frozen V14
+- CVN X870 Gaming Frozen V14
+
 ## Technical Reference
 
 - [iGame Center Lite](https://www.colorfulgroup.com/en/igamecenter): implementation reference.
 - **RGB Controller**: USB HID device (`VID: 0x2F4C`, `PID: 0x1000`, Usage Page `0xFF01`), up to 200 LEDs across 10 report packets + commit packet.
 - **Super I/O**: Nuvoton NCT5584D (`Chip ID: 0xD42A`), accessed via config port `0x4E` and HWM base port `0x0A20` via `/dev/port`.
+
+## Extracting & Inspecting the Official Driver Files
+
+The reverse-engineering was performed on the official **iGame Center Lite** installer package (`iGC.Lite-*-Installer-Prod.exe`). If you want to extract and inspect the binaries yourself:
+
+### 1. Extract the Installer
+
+The installer executable is packaged using **Inno Setup (6.1.0)**. On Linux, extract its contents using `innoextract`:
+
+```bash
+# Using innoextract directly
+innoextract iGC.Lite-*.exe -d extracted/
+# or with Nix:
+nix run nixpkgs#innoextract -- iGC.Lite-*.exe -d extracted/
+```
+
+This extracts the application binaries into `extracted/app/`.
+
+### 2. Decompile the .NET Assemblies
+
+The core logic (Super I/O drivers, motherboard sensor tables, fan curves, and LED services) is implemented in .NET C# assemblies. Decompile them using [`ilspycmd`](https://github.com/icsharpcode/ILSpy) (or a GUI decompiler like AvaloniaILSpy / dnSpy):
+
+```bash
+mkdir -p decompiled
+
+# Decompile all application DLLs to C# projects:
+for dll in extracted/app/*.dll; do
+    name=$(basename "$dll" .dll)
+    nix run nixpkgs#ilspycmd -- -p -o "decompiled/$name" "$dll"
+done
+```
+
+### 3. Key Files for Reverse Engineering
+
+- **`iGameCenter.Hardware/iGameCenter.Hardware.ComputerInfo/MBFanSensorHelper.cs`**:
+  Contains motherboard identification lists (`NCT5584D_Datas`) and silkscreen header-to-index mappings for all supported Colorful boards.
+- **`iGameAPI.MBoard.WinRing0/iGameAPI.MBoard.WinRing0.SuperIOChip/NCT5584D_Service.cs`**:
+  Hardware Monitor base address discovery, Logical Device Number (`0x0B`) selection, bank assignments, and RPM register addresses.
+- **`iGameAPI.MBoard.WinRing0/iGameAPI.MBoard.WinRing0/Colorful_SuperIO.cs`**:
+  Super I/O config entry (`0x87, 0x87`), exit (`0xAA`), and I/O lock disabling routines.
+- **`iGameCenter.ConfigManager/iGameCenter.ConfigManager/MBFanConfing.cs`**:
+  Default factory 4-point SmartFan curves for quiet (`Mute`), standard (`General`), and full load (`FullLoad`) modes.
