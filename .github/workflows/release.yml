@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Generate shell completions
+        run: |
+          mkdir -p completions
+          for shell in bash elvish fish powershell zsh; do
+            ./target/release/colorctl completions "$shell" > "completions/colorctl.$shell"
+          done
+          # Provide standard zsh filename convention
+          cp completions/colorctl.zsh completions/_colorctl
+
+      - name: Package archives
+        run: |
+          mkdir -p dist
+          cp target/release/colorctl dist/
+          cp -r completions dist/
+          tar -czf colorctl-linux-x86_64.tar.gz -C dist colorctl completions
+          tar -czf colorctl-completions.tar.gz completions
+
+      - name: Upload clap-complete artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: colorctl-completions
+          path: completions/
+
+      - name: Upload release bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: colorctl-linux-x86_64
+          path: dist/
+
+      - name: Attach assets to GitHub Release
+        uses: softprops/action-gh-release@v3
+        if: github.event_name == 'release'
+        with:
+          files: |
+            colorctl-linux-x86_64.tar.gz
+            colorctl-completions.tar.gz
+            target/release/colorctl
+            completions/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
