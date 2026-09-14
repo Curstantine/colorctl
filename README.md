@@ -1,6 +1,6 @@
 # colorctl
 
-Hardware control utility written in Rust for the **Colorful CVN B650M Gaming Frozen V14** motherboard, providing RGB lighting and fan curve management.
+Hardware control utility for **Colorful AMD motherboards** (tested on the **CVN B650M Gaming Frozen V14**), providing RGB lighting and fan curve management.
 
 ## Features
 
@@ -82,11 +82,12 @@ colorctl completions bash > ~/.local/share/bash-completion/completions/colorctl
 
 ## Note on Compatibility
 
-While this is only tested to be working on the CVN B650M Gaming Frozen V14, there is a high chance it will work on other B650/B850 models from Colorful (especially the ATX variant of this board) as they share the same underlying hardware.
+While this is primary tested on the CVN B650M Gaming Frozen V14, it is designed to work across other B650, B850, and X870 models from Colorful as they share the same underlying Super I/O and USB HID hardware.
 
-The following models _might_ be compatible:
+Supported / Compatible models include:
 
 - CVN B650 Gaming Frozen V14
+- CVN B650M Gaming Frozen V14
 - COLORFIRE B650M-MEOW WIFI Orange
 - BATTLE-AX B650M-PLUS V14 / V15
 - BATTLE-AX B650M-WHITE WIFI V14 / V15
@@ -108,7 +109,7 @@ The reverse-engineering was performed on the official **iGame Center Lite** inst
 The installer executable is packaged using **Inno Setup (6.1.0)**. On Linux, extract its contents using `innoextract`:
 
 ```bash
-# Using innoextract directly
+# Using innoextract directly:
 innoextract iGC.Lite-*.exe -d extracted/
 # or with Nix:
 nix run nixpkgs#innoextract -- iGC.Lite-*.exe -d extracted/
