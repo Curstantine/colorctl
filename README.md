@@ -96,14 +96,23 @@ To have your preferred fan curve and RGB configuration automatically applied on 
 1. Add `colorctl` to your flake inputs:
 
     ```nix
-    inputs.colorctl.url = "github:Curstantine/colorctl";
+    inputs = {
+      colorctl = {
+        url = "github:Curstantine/colorctl";
+        inputs.nixpkgs.follows = "nixpkgs";
+      };
+    };
     ```
 
-2. Import the module and configure the service:
+2. Import the module, add the overlay, and configure the service:
     ```nix
     { inputs, ... }:
     {
       imports = [ inputs.colorctl.nixosModules.default ];
+
+      nixpkgs.overlays = [
+        inputs.colorctl.overlays.default
+      ];
 
       services.colorctl = {
         enable = true;

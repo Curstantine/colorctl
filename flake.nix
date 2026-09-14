@@ -46,7 +46,7 @@
     )
     // {
       overlays.default = final: prev: {
-        colorctl = self.packages.${final.system}.default;
+        colorctl = self.packages.${final.stdenv.hostPlatform.system}.default;
       };
 
       nixosModules.default = import ./nix/module.nix;
