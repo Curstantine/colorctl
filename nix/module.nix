@@ -87,17 +87,15 @@ in
       KERNEL=="hidraw*", ATTRS{idVendor}=="2f4c", ATTRS{idProduct}=="1000", MODE="0666", TAG+="uaccess"
     '';
 
-    # Systemd oneshot service that executes on boot and after wake/suspend
+    # Restart service when waking up from suspend/hibernate
+    powerManagement.resumeCommands = ''
+      systemctl restart colorctl.service
+    '';
+
+    # Systemd oneshot service that executes on boot
     systemd.services.colorctl = {
       description = "Apply Colorful Motherboard Fan Curves and RGB Settings";
-      wantedBy = [
-        "multi-user.target"
-        "post-resume.target"
-      ];
-      after = [
-        "multi-user.target"
-        "post-resume.target"
-      ];
+      wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
         Type = "oneshot";

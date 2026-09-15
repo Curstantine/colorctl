@@ -203,7 +203,7 @@ pub enum FanAction {
     /// Set manual fan speed (0-100% or raw PWM 0-255)
     SetSpeed {
         /// Target fan header
-        #[arg(short = 'f', long, value_enum)]
+        #[arg(short = 'f', long, value_enum, default_value = "all")]
         fan: FanTarget,
 
         /// Speed percentage (0-100)
@@ -217,7 +217,7 @@ pub enum FanAction {
     /// Configure 4-point SmartFan temperature curve or apply a built-in profile
     SetCurve {
         /// Target fan header
-        #[arg(short = 'f', long, value_enum)]
+        #[arg(short = 'f', long, value_enum, default_value = "all")]
         fan: FanTarget,
 
         /// 4 temperature-speed points in format: 'T1:P1,T2:P2,T3:P3,T4:P4' (e.g. '30:20,50:40,70:70,85:100')
@@ -225,7 +225,7 @@ pub enum FanAction {
         points: Option<[(u8, u8); 4]>,
 
         /// Built-in profile: 'quiet', 'standard', or 'full'
-        #[arg(long, value_enum)]
+        #[arg(short = 'P', long, value_enum)]
         profile: Option<FanProfile>,
     },
 }
