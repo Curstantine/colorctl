@@ -31,7 +31,8 @@
         packages.colorctl = colorctlPkg;
 
         devShells.default = pkgs.mkShell {
-          buildInputs = [
+          buildInputs = with pkgs; [nixd nixfmt] ++ [
+
             (pkgs.rust-bin.stable.latest.default.override {
               extensions = [
                 "rust-src"

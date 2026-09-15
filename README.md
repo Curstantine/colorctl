@@ -143,21 +143,27 @@ The module automatically:
 - Installs udev rules granting unprivileged users access to `/dev/hidraw*` for RGB lighting.
 - Creates a `systemd.services.colorctl` oneshot service that executes on boot and after wake from suspend (`post-resume.target`).
 
----
-
 ## Note on Compatibility
 
-While this is primary tested on the CVN B650M Gaming Frozen V14, it is designed to work across other B650, B850, and X870 models from Colorful as they share the same underlying Super I/O and USB HID hardware.
+While `colorctl` is primarily tested on the **CVN B650M Gaming Frozen V14**, it supports Colorful motherboards powered by the **Nuvoton NCT5584D** Super I/O chip (Chip ID: `0xD42A` / `54314`) and the **VID `0x2F4C` / PID `0x1000`** USB HID RGB controller.
 
-Supported / Compatible models include:
+### Supported Motherboard Models
 
-- CVN B650 Gaming Frozen V14
-- CVN B650M Gaming Frozen V14
-- COLORFIRE B650M-MEOW WIFI Orange
-- BATTLE-AX B650M-PLUS V14 / V15
-- BATTLE-AX B650M-WHITE WIFI V14 / V15
-- CVN B850M Gaming Frozen V14
-- CVN X870 Gaming Frozen V14
+- **AMD B850 / B840 / X870 (AM5)**:
+    - **CVN**: CVN B850 GAMING PRO WIFI7 V14, CVN B850M ARK FROZEN V14, CVN B850M GAMING FROZEN V14, CVN B850I FROZEN WIFI V14, CVN B850I GAMING FROZEN V14, CVN X870 GAMING FROZEN V14
+    - **iGame / COLORFIRE**: iGame B850I MINI OC V14, COLORFIRE B850M-A MEOW WIFI ORANGE, COLORFIRE B850M-MEOW WIFI7 V14
+    - **BATTLE-AX**: BATTLE-AX B850M-PLUS PRO WIFI V14, BATTLE-AX B850M-PLUS WIFI V14, BATTLE-AX B850M-PLUS S WIFI7 V14, BATTLE-AX B850M-GHA WIFI V14, BATTLE-AX B850M-T WIFI V14, BATTLE-AX B850M-E WIFI V14, BATTLE-AX B840M-D PRO V14, BATTLE-AX B840M-GHA WIFI V14, BATTLE-AX X870A-GHA WIFI V14
+    - **iCafe**: iCafe B850M-G DELUXE V14A, iCafe B850M-G DELUXE V15
+- **AMD B650 (AM5)**:
+    - **CVN**: CVN B650 GAMING FROZEN V14 _(ATX)_, CVN B650M GAMING FROZEN V14 _(mATX)_
+    - **COLORFIRE**: COLORFIRE B650M-MEOW WIFI ORANGE
+    - **BATTLE-AX**: BATTLE-AX B650A-GHA WIFI V14 _(ATX)_, BATTLE-AX B650M-PLUS V14 / V15, BATTLE-AX B650M-PLUS WIFI V15, BATTLE-AX B650M-WHITE WIFI V14 / V15, BATTLE-AX B650M-A PLUS V14, BATTLE-AX B650M-D PRO V14, BATTLE-AX B650M-E WIFI V14, BATTLE-AX B650M-E PRO V14, BATTLE-AX B650M-GHA WIFI V14, BATTLE-AX B650M-T V14 / WIFI V14
+    - **iCafe**: iCafe B650M-G DELUXE V14 / V14A / V15, iCafe B650M-PLUS DELUXE V14
+- **AMD A620 / A520 (AM5 / AM4)**:
+    - BATTLE-AX A620M-GHA WIFI V14, BATTLE-AX A620M-D PRO V14, BATTLE-AX A620AM-GHA WIFI V14, BATTLE-AX A620AM-D PRO V14, BATTLE-AX A520M-T WIFI V15
+
+> [!TIP]
+> Refer to [COMPATIBILITY.md](COMPATIBILITY.md) for detailed hardware architectural breakdowns, silkscreen header vs. Super I/O bank mapping variations (e.g. ATX vs. mATX wiring), dynamic RGB header differences, and unsupported Super I/O chips (e.g. NCT5585D, NCT6796D).
 
 ## Technical Reference
 

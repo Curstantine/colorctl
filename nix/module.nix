@@ -9,6 +9,109 @@ with lib;
 
 let
   cfg = config.services.colorctl;
+  enumOrListOf = enums: types.coercedTo (types.enum enums) (x: [ x ]) (types.listOf (types.enum enums));
+
+  fanHeaderType = enumOrListOf [
+    "all"
+    "cpu"
+    "cha_fan1"
+    "cha_fan2"
+    "cha_fan3"
+    "pump"
+  ];
+
+  rgbChannelType = enumOrListOf [
+    "all"
+    "led"
+    "12v_1"
+    "12v_2"
+    "5v_1"
+    "5v_2"
+    "5v_3"
+  ];
+
+  fanSubmodule =
+    { ... }:
+    {
+      options = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Whether to apply this fan curve configuration.";
+        };
+
+        headers = mkOption {
+          type = fanHeaderType;
+          default = [ "all" ];
+          example = [
+            "all"
+            "cpu"
+          ];
+          description = "Target fan header(s) for this curve ('all', 'cpu', 'cha_fan1', 'cha_fan2', 'cha_fan3', 'pump').";
+        };
+
+        profile = mkOption {
+          type = types.enum [
+            "quiet"
+            "standard"
+            "full"
+          ];
+          default = "quiet";
+          description = "Built-in fan curve profile (quiet, standard, full).";
+        };
+
+        customPoints = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          example = "30:25,50:45,70:75,85:100";
+          description = "Custom 4-point curve in format 'T1:P1,T2:P2,T3:P3,T4:P4'. Overrides profile if specified.";
+        };
+      };
+    };
+
+  rgbSubmodule =
+    { ... }:
+    {
+      options = {
+        enable = mkOption {
+          type = types.bool;
+          default = true;
+          description = "Whether to apply this RGB configuration.";
+        };
+
+        mode = mkOption {
+          type = types.enum [
+            "set"
+            "off"
+          ];
+          default = "set";
+          description = "RGB action mode: 'set' to configure color/brightness, or 'off' to turn off lighting.";
+        };
+
+        channels = mkOption {
+          type = rgbChannelType;
+          default = [ "all" ];
+          example = [
+            "12v_1"
+            "5v_1"
+          ];
+          description = "Target RGB channel(s) ('all', 'led', '12v_1', '12v_2', '5v_1', '5v_2', '5v_3').";
+        };
+
+        color = mkOption {
+          type = types.str;
+          default = "cyan";
+          example = "#ff0088";
+          description = "Color to set (color name or hex). Ignored when mode is 'off'.";
+        };
+
+        brightness = mkOption {
+          type = types.ints.between 0 100;
+          default = 100;
+          description = "RGB brightness level (0-100%).";
+        };
+      };
+    };
 in
 {
   options.services.colorctl = {
@@ -20,62 +123,55 @@ in
       description = "The colorctl package to use.";
     };
 
-    fan = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Apply fan curve settings automatically on boot and resume.";
-      };
-
-      profile = mkOption {
-        type = types.enum [
-          "quiet"
-          "standard"
-          "full"
-        ];
-        default = "quiet";
-        description = "Built-in fan curve profile (quiet, standard, full).";
-      };
-
-      customPoints = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        example = "30:25,50:45,70:75,85:100";
-        description = "Custom 4-point curve in format 'T1:P1,T2:P2,T3:P3,T4:P4'. Overrides profile if specified.";
-      };
-
-      header = mkOption {
-        type = types.str;
-        default = "all";
-        description = "Target fan header ('all', 'cpu', 'cha_fan1', 'cha_fan2', 'cha_fan3', 'pump').";
-      };
+    fan = mkOption {
+      type = types.listOf (types.submodule fanSubmodule);
+      default = [
+        {
+          headers = [ "all" ];
+          profile = "quiet";
+        }
+      ];
+      description = ''
+        List of fan curve configuration blocks targeting different headers.
+      '';
+      example = literalExpression ''
+        [
+          {
+            headers = [ "all" "cpu" ];
+            profile = "quiet";
+          }
+          {
+            headers = [ "pump" ];
+            profile = "full";
+          }
+        ]
+      '';
     };
 
-    rgb = {
-      enable = mkOption {
-        type = types.bool;
-        default = true;
-        description = "Apply RGB lighting settings automatically on boot.";
-      };
-
-      color = mkOption {
-        type = types.str;
-        default = "cyan";
-        example = "#ff0088";
-        description = "Color to set on boot (color name or hex).";
-      };
-
-      brightness = mkOption {
-        type = types.ints.between 0 100;
-        default = 100;
-        description = "RGB brightness level (0-100%).";
-      };
-
-      channel = mkOption {
-        type = types.str;
-        default = "all";
-        description = "Target RGB channel ('all', 'led', '12v-1', '12v-2', '5v-1', '5v-2', '5v-3').";
-      };
+    rgb = mkOption {
+      type = types.listOf (types.submodule rgbSubmodule);
+      default = [
+        {
+          channels = [ "all" ];
+          mode = "off";
+        }
+      ];
+      description = ''
+        List of RGB lighting configuration blocks targeting different channels.
+      '';
+      example = literalExpression ''
+        [
+          {
+            channels = [ "12v_1" "5v_1" ];
+            mode = "off";
+          }
+          {
+            channels = [ "led" ];
+            color = "#ff0088";
+            brightness = 80;
+          }
+        ]
+      '';
     };
   };
 
@@ -102,25 +198,33 @@ in
         RemainAfterExit = true;
         ExecStart =
           let
-            fanCmd =
-              if cfg.fan.enable then
-                if cfg.fan.customPoints != null then
-                  "${cfg.package}/bin/colorctl fan set-curve --fan ${cfg.fan.header} --points ${cfg.fan.customPoints}"
-                else
-                  "${cfg.package}/bin/colorctl fan set-curve --fan ${cfg.fan.header} --profile ${cfg.fan.profile}"
-              else
-                ":";
+            fanCmds = concatMap (
+              f:
+              optionals f.enable (
+                map (
+                  h:
+                  if f.customPoints != null then
+                    "${cfg.package}/bin/colorctl fan set-curve --fan '${h}' --points '${f.customPoints}'"
+                  else
+                    "${cfg.package}/bin/colorctl fan set-curve --fan '${h}' --profile '${f.profile}'"
+                ) f.headers
+              )
+            ) cfg.fan;
 
-            rgbCmd =
-              if cfg.rgb.enable then
-                "${cfg.package}/bin/colorctl rgb set --channel ${cfg.rgb.channel} --color '${cfg.rgb.color}' --brightness ${toString cfg.rgb.brightness}"
-              else
-                ":";
+            rgbCmds = concatMap (
+              r:
+              optionals r.enable (
+                map (
+                  ch:
+                  if r.mode == "off" then
+                    "${cfg.package}/bin/colorctl rgb off --channel '${ch}'"
+                  else
+                    "${cfg.package}/bin/colorctl rgb set --channel '${ch}' --color '${r.color}' --brightness ${toString r.brightness}"
+                ) r.channels
+              )
+            ) cfg.rgb;
           in
-          pkgs.writeShellScript "colorctl-apply" ''
-            ${optionalString cfg.fan.enable "${fanCmd}"}
-            ${optionalString cfg.rgb.enable "${rgbCmd}"}
-          '';
+          pkgs.writeShellScript "colorctl-apply" (concatStringsSep "\n" (fanCmds ++ rgbCmds));
       };
     };
   };
