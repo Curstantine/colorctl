@@ -69,73 +69,31 @@ impl FanHeader {
     }
 }
 
-pub enum Backend {
-    DevPort(File),
-    Direct,
+pub struct Backend {
+    file: File,
 }
 
 impl Backend {
     pub fn new() -> Result<Self> {
-        // Try /dev/port first: operates at kernel level and covers all ports up to 0xFFFF,
-        // unlike ioperm which is limited to 0x3FF (cannot reach HWM ports 0x0A25/0x0A26).
         match OpenOptions::new().read(true).write(true).open("/dev/port") {
-            Ok(file) => Ok(Backend::DevPort(file)),
-            Err(e) => {
-                // Fallback to ioperm
-                unsafe {
-                    let r1 = libc::ioperm(0x2e, 2, 1);
-                    let r2 = libc::ioperm(0x4e, 2, 1);
-                    if r1 == 0 && r2 == 0 {
-                        Ok(Backend::Direct)
-                    } else {
-                        bail!(
-                            "Port I/O access failed: cannot open /dev/port ({}) and ioperm failed. Root privileges (doas/su) required.",
-                            e
-                        );
-                    }
-                }
-            }
+            Ok(file) => Ok(Self { file }),
+            Err(e) => bail!(
+                "Port I/O access failed: cannot open /dev/port ({e}). Root privileges (doas/su) required."
+            ),
         }
     }
 
     pub fn read_byte(&mut self, port: u16) -> Result<u8> {
-        match self {
-            Backend::DevPort(file) => {
-                file.seek(SeekFrom::Start(port as u64))?;
-                let mut buf = [0u8; 1];
-                file.read_exact(&mut buf)?;
-                Ok(buf[0])
-            }
-            Backend::Direct => unsafe {
-                let val: u8;
-                std::arch::asm!(
-                    "in al, dx",
-                    in("dx") port,
-                    out("al") val,
-                    options(nomem, nostack, preserves_flags)
-                );
-                Ok(val)
-            },
-        }
+        self.file.seek(SeekFrom::Start(port as u64))?;
+        let mut buf = [0u8; 1];
+        self.file.read_exact(&mut buf)?;
+        Ok(buf[0])
     }
 
     pub fn write_byte(&mut self, port: u16, val: u8) -> Result<()> {
-        match self {
-            Backend::DevPort(file) => {
-                file.seek(SeekFrom::Start(port as u64))?;
-                file.write_all(&[val])?;
-                Ok(())
-            }
-            Backend::Direct => unsafe {
-                std::arch::asm!(
-                    "out dx, al",
-                    in("dx") port,
-                    in("al") val,
-                    options(nomem, nostack, preserves_flags)
-                );
-                Ok(())
-            },
-        }
+        self.file.seek(SeekFrom::Start(port as u64))?;
+        self.file.write_all(&[val])?;
+        Ok(())
     }
 
     fn io_delay(&self) {

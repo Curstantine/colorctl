@@ -35,7 +35,7 @@ colorctl rgb off --channel led
 ### Fan Control (Requires root)
 
 > [!NOTE]
-> Direct Super I/O port access requires root privileges (`doas`, `sudo`, or `su`).
+> Super I/O port access requires root privileges (`doas`, `sudo`, or `su`).
 
 ```bash
 # View fan RPMs and motherboard temperature

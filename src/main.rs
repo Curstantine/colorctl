@@ -126,10 +126,7 @@ fn handle_fan(args: FanArgs) -> Result<()> {
         }
         FanAction::SetSpeed { fan, percent, pwm } => {
             let pwm_val = match (percent, pwm) {
-                (Some(p), None) => {
-                    let p = p.min(100);
-                    ((p as f64) * 2.55).ceil() as u8
-                }
+                (Some(p), None) => ((p.min(100) as f64) * 2.55).ceil() as u8,
                 (None, Some(pwm)) => pwm,
                 (Some(_), Some(_)) => bail!("Specify either --percent or --pwm, not both"),
                 (None, None) => bail!("Must specify either --percent (0-100) or --pwm (0-255)"),

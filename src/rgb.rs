@@ -221,8 +221,7 @@ pub fn parse_color(s: &str) -> Result<[u8; 3]> {
         Ok([r, g, b])
     } else {
         bail!(
-            "Invalid color format '{}'. Expected hex (e.g. 'ff00aa', '#00ff00') or name ('red', 'blue', 'green', 'white', 'off')",
-            s
+            "Invalid color format '{s}'. Expected hex (e.g. 'ff00aa', '#00ff00') or name ('red', 'blue', 'green', 'white', 'off')"
         )
     }
 }
