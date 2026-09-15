@@ -9,7 +9,8 @@ with lib;
 
 let
   cfg = config.services.colorctl;
-  enumOrListOf = enums: types.coercedTo (types.enum enums) (x: [ x ]) (types.listOf (types.enum enums));
+  enumOrListOf =
+    enums: types.coercedTo (types.enum enums) (x: [ x ]) (types.listOf (types.enum enums));
 
   fanHeaderType = enumOrListOf [
     "all"
@@ -112,6 +113,18 @@ let
         };
       };
     };
+
+  # A single submodule attrset coerces into a one-element list, so callers
+  # can write either a flat config or a list of configs interchangeably.
+  submoduleOrListOf =
+    submodule:
+    let
+      elemType = types.submodule submodule;
+    in
+    types.coercedTo elemType (x: [ x ]) (types.listOf elemType);
+
+  fanConfigType = submoduleOrListOf fanSubmodule;
+  rgbConfigType = submoduleOrListOf rgbSubmodule;
 in
 {
   options.services.colorctl = {
@@ -124,17 +137,23 @@ in
     };
 
     fan = mkOption {
-      type = types.listOf (types.submodule fanSubmodule);
-      default = [
-        {
-          headers = [ "all" ];
-          profile = "quiet";
-        }
-      ];
+      type = fanConfigType;
+      default = {
+        headers = [ "all" ];
+        profile = "quiet";
+      };
       description = ''
-        List of fan curve configuration blocks targeting different headers.
+        Fan curve configuration. Either a single attrset (applies to the
+        given headers) or a list of attrsets targeting different headers.
       '';
       example = literalExpression ''
+        # flat form
+        {
+          headers = [ "all" "cpu" ];
+          profile = "quiet";
+        }
+
+        # list form
         [
           {
             headers = [ "all" "cpu" ];
@@ -149,17 +168,24 @@ in
     };
 
     rgb = mkOption {
-      type = types.listOf (types.submodule rgbSubmodule);
-      default = [
-        {
-          channels = [ "all" ];
-          mode = "off";
-        }
-      ];
+      type = rgbConfigType;
+      default = {
+        channels = [ "all" ];
+        mode = "off";
+      };
       description = ''
-        List of RGB lighting configuration blocks targeting different channels.
+        RGB lighting configuration. Either a single attrset (applies to the
+        given channels) or a list of attrsets targeting different channels.
       '';
       example = literalExpression ''
+        # flat form
+        {
+          channels = [ "led" ];
+          color = "#ff0088";
+          brightness = 80;
+        }
+
+        # list form
         [
           {
             channels = [ "12v_1" "5v_1" ];
