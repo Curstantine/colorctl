@@ -40,6 +40,7 @@ impl Channel {
         }
     }
 
+    #[inline]
     pub fn all() -> &'static [Channel] {
         &[
             Channel::Led,
@@ -49,18 +50,6 @@ impl Channel {
             Channel::Argb2,
             Channel::Argb3,
         ]
-    }
-
-    pub fn from_str(s: &str) -> Option<Channel> {
-        match s.to_ascii_lowercase().as_str() {
-            "led" | "onboard" | "0" => Some(Channel::Led),
-            "12v_1" | "12v-1" | "rgb1" | "1" => Some(Channel::Rgb1),
-            "12v_2" | "12v-2" | "rgb2" | "2" => Some(Channel::Rgb2),
-            "5v_1" | "5v-1" | "argb1" | "3" => Some(Channel::Argb1),
-            "5v_2" | "5v-2" | "argb2" | "4" => Some(Channel::Argb2),
-            "5v_3" | "5v-3" | "argb3" | "5" => Some(Channel::Argb3),
-            _ => None,
-        }
     }
 }
 

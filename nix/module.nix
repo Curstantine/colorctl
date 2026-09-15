@@ -47,7 +47,7 @@ in
       header = mkOption {
         type = types.str;
         default = "all";
-        description = "Target fan header ('all', 'cpu', 'sys1', 'sys2', 'sys3', 'pump').";
+        description = "Target fan header ('all', 'cpu', 'cha_fan1', 'cha_fan2', 'cha_fan3', 'pump').";
       };
     };
 

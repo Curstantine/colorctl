@@ -3,13 +3,15 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use std::io;
 
-mod cli;
-mod fan;
-mod rgb;
+pub mod cli;
+pub mod fan;
+pub mod rgb;
+pub mod utils;
 
-use cli::{Cli, Commands, FanAction, FanArgs, RgbAction, RgbArgs};
+use cli::{Cli, Commands, FanAction, FanArgs, RgbAction, RgbArgs, RgbTarget};
 use fan::{FanHeader, SuperIo};
 use rgb::{Channel, RgbController, parse_color};
+use utils::pct;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -52,29 +54,26 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
                 "Failed to connect to RGB controller. Is the RGB controller enabled in BIOS?",
             )?;
 
-            if channel.eq_ignore_ascii_case("all") {
+            if channel == RgbTarget::All {
                 ctrl.set_all_color(rgb_val, brightness);
                 ctrl.apply()?;
                 println!(
                     "Set all channels to #{:02x}{:02x}{:02x} at {}% brightness",
                     rgb_val[0], rgb_val[1], rgb_val[2], brightness
                 );
-            } else if let Some(ch) = Channel::from_str(&channel) {
-                ctrl.set_channel_color(ch, rgb_val, brightness);
-                ctrl.apply()?;
-                println!(
-                    "Set channel '{}' to #{:02x}{:02x}{:02x} at {}% brightness",
-                    ch.name(),
-                    rgb_val[0],
-                    rgb_val[1],
-                    rgb_val[2],
-                    brightness
-                );
             } else {
-                bail!(
-                    "Unknown channel '{}'. Choose from: all, led, 12v-1, 12v-2, 5v-1, 5v-2, 5v-3",
-                    channel
-                );
+                for ch in channel.channels() {
+                    ctrl.set_channel_color(*ch, rgb_val, brightness);
+                    ctrl.apply()?;
+                    println!(
+                        "Set channel '{}' to #{:02x}{:02x}{:02x} at {}% brightness",
+                        ch.name(),
+                        rgb_val[0],
+                        rgb_val[1],
+                        rgb_val[2],
+                        brightness
+                    );
+                }
             }
         }
         RgbAction::Off { channel } => {
@@ -82,19 +81,16 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
                 "Failed to connect to RGB controller. Is the RGB controller enabled in BIOS?",
             )?;
 
-            if channel.eq_ignore_ascii_case("all") {
+            if channel == RgbTarget::All {
                 ctrl.set_all_color([0, 0, 0], 0);
                 ctrl.apply()?;
                 println!("Turned off all RGB channels");
-            } else if let Some(ch) = Channel::from_str(&channel) {
-                ctrl.set_channel_color(ch, [0, 0, 0], 0);
-                ctrl.apply()?;
-                println!("Turned off channel '{}'", ch.name());
             } else {
-                bail!(
-                    "Unknown channel '{}'. Choose from: all, led, 12v-1, 12v-2, 5v-1, 5v-2, 5v-3",
-                    channel
-                );
+                for ch in channel.channels() {
+                    ctrl.set_channel_color(*ch, [0, 0, 0], 0);
+                    ctrl.apply()?;
+                    println!("Turned off channel '{}'", ch.name());
+                }
             }
         }
     }
@@ -111,9 +107,9 @@ fn handle_fan(args: FanArgs) -> Result<()> {
                 "Nuvoton NCT5584D Super I/O (Chip ID: 0x{:04X})",
                 sio.chip_id
             );
-            let temp = sio.get_temperature()?;
-            println!("  Motherboard Temp: {} °C", temp);
+            println!("  Motherboard Temp: {} °C", sio.get_temperature()?);
             println!("  Fan Speeds:");
+
             for header in FanHeader::all() {
                 let rpm = sio.get_fan_rpm(*header)?;
                 println!(
@@ -126,25 +122,14 @@ fn handle_fan(args: FanArgs) -> Result<()> {
         }
         FanAction::SetSpeed { fan, percent, pwm } => {
             let pwm_val = match (percent, pwm) {
-                (Some(p), None) => ((p.min(100) as f64) * 2.55).ceil() as u8,
+                (Some(p), None) => pct(p),
                 (None, Some(pwm)) => pwm,
                 (Some(_), Some(_)) => bail!("Specify either --percent or --pwm, not both"),
                 (None, None) => bail!("Must specify either --percent (0-100) or --pwm (0-255)"),
             };
 
-            let headers: Vec<FanHeader> = if fan.eq_ignore_ascii_case("all") {
-                FanHeader::all().to_vec()
-            } else if let Some(h) = FanHeader::from_str(&fan) {
-                vec![h]
-            } else {
-                bail!(
-                    "Unknown fan '{}'. Choose from: all, cpu, sys1, sys2, sys3, pump",
-                    fan
-                );
-            };
-
-            for h in headers {
-                sio.set_fan_speed_pwm(h, pwm_val)?;
+            for h in fan.headers() {
+                sio.set_fan_speed_pwm(*h, pwm_val)?;
                 println!(
                     "Set {} to PWM {} (~{}%)",
                     h.name(),
@@ -158,19 +143,12 @@ fn handle_fan(args: FanArgs) -> Result<()> {
             points,
             profile,
         } => {
-            let headers: Vec<FanHeader> = if fan.eq_ignore_ascii_case("all") {
-                FanHeader::all().to_vec()
-            } else if let Some(h) = FanHeader::from_str(&fan) {
-                vec![h]
-            } else {
-                bail!("Unknown fan '{fan}'. Choose from: all, cpu, sys1, sys2, sys3, pump",);
-            };
+            let headers = fan.headers();
 
             match (points, profile) {
-                (Some(pts_str), None) => {
-                    let parsed_points = parse_curve_points(&pts_str)?;
+                (Some(parsed_points), None) => {
                     for h in headers {
-                        sio.set_fan_curve(h, &parsed_points)?;
+                        sio.set_fan_curve(*h, &parsed_points)?;
                         println!("Configured 4-point SmartFan curve on {}:", h.name());
                         for (i, (t, p)) in parsed_points.iter().enumerate() {
                             let pct = ((*p as f64 / 255.0) * 100.0).round();
@@ -180,8 +158,8 @@ fn handle_fan(args: FanArgs) -> Result<()> {
                 }
                 (None, Some(prof)) => {
                     for h in headers {
-                        let curve = prof.points_for(h == FanHeader::Pump);
-                        sio.set_fan_curve(h, &curve)?;
+                        let curve = prof.points_for(*h == FanHeader::Pump);
+                        sio.set_fan_curve(*h, &curve)?;
                         println!("Applied '{:?}' curve profile on {}:", prof, h.name());
                         for (i, (t, p)) in curve.iter().enumerate() {
                             let pct = ((*p as f64 / 255.0) * 100.0).round();
@@ -202,31 +180,4 @@ fn handle_fan(args: FanArgs) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn parse_curve_points(s: &str) -> Result<[(u8, u8); 4]> {
-    let parts: Vec<&str> = s.split(',').map(|p| p.trim()).collect();
-    if parts.len() != 4 {
-        bail!(
-            "Expected exactly 4 points in format 'T1:P1,T2:P2,T3:P3,T4:P4', got {}",
-            parts.len()
-        );
-    }
-
-    let mut points = [(0u8, 0u8); 4];
-    for (i, part) in parts.iter().enumerate() {
-        let pair: Vec<&str> = part.split(':').map(|p| p.trim()).collect();
-        if pair.len() != 2 {
-            bail!(
-                "Invalid point '{}'. Expected 'Temp:SpeedPercent' (e.g. '50:40')",
-                part
-            );
-        }
-        let temp_c: u8 = pair[0].parse().context("Invalid temperature")?;
-        let percent: u8 = pair[1].parse().context("Invalid speed percent")?;
-        let pwm = ((percent.min(100) as f64) * 2.55).ceil() as u8;
-        points[i] = (temp_c, pwm);
-    }
-
-    Ok(points)
 }

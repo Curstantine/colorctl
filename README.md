@@ -44,7 +44,7 @@ doas colorctl fan status
 # Set fixed manual fan speed (percentage or raw PWM 0-255)
 doas colorctl fan set-speed --fan cpu --percent 60
 doas colorctl fan set-speed --fan all --percent 50
-doas colorctl fan set-speed --fan sys1 --pwm 180
+doas colorctl fan set-speed --fan cha_fan1 --pwm 180
 
 # Apply built-in SmartFan curve profiles
 doas colorctl fan set-curve --fan cpu --profile quiet
@@ -56,7 +56,7 @@ doas colorctl fan set-curve --fan cpu --points 30:25,50:45,70:75,85:100
 doas colorctl fan set-curve --fan all --points 30:20,50:40,70:70,85:100
 ```
 
-**Fan headers**: `all`, `cpu`, `sys1` (`CHA_FAN1`), `sys2` (`CHA_FAN2`), `sys3` (`CHA_FAN3`), `pump` (`AIO_PUMP`).
+**Fan headers**: `all`, `cpu` (`CPU_FAN`), `cha_fan1`, `cha_fan2`, `cha_fan3`, `pump` (`AIO_PUMP`).
 
 **Built-in Curve Profiles** (directly from Colorful iGame specifications):
 
