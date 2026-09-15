@@ -114,14 +114,16 @@ let
       };
     };
 
-  # A single submodule attrset coerces into a one-element list, so callers
-  # can write either a flat config or a list of configs interchangeably.
+  # coercedTo can't be used here because its "from" type can't itself be a
+  # submodule (submodules carry merge semantics coercedTo can't reconcile).
   submoduleOrListOf =
     submodule:
     let
       elemType = types.submodule submodule;
     in
-    types.coercedTo elemType (x: [ x ]) (types.listOf elemType);
+    types.either elemType (types.listOf elemType);
+
+  toList = x: if builtins.isList x then x else [ x ];
 
   fanConfigType = submoduleOrListOf fanSubmodule;
   rgbConfigType = submoduleOrListOf rgbSubmodule;
@@ -224,6 +226,9 @@ in
         RemainAfterExit = true;
         ExecStart =
           let
+            fanList = toList cfg.fan;
+            rgbList = toList cfg.rgb;
+
             fanCmds = concatMap (
               f:
               optionals f.enable (
@@ -235,7 +240,7 @@ in
                     "${cfg.package}/bin/colorctl fan set-curve --fan '${h}' --profile '${f.profile}'"
                 ) f.headers
               )
-            ) cfg.fan;
+            ) fanList;
 
             rgbCmds = concatMap (
               r:
@@ -248,7 +253,7 @@ in
                     "${cfg.package}/bin/colorctl rgb set --channel '${ch}' --color '${r.color}' --brightness ${toString r.brightness}"
                 ) r.channels
               )
-            ) cfg.rgb;
+            ) rgbList;
           in
           pkgs.writeShellScript "colorctl-apply" (concatStringsSep "\n" (fanCmds ++ rgbCmds));
       };
