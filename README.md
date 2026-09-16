@@ -1,6 +1,6 @@
 # colorctl
 
-Hardware control utility written in Rust for **Colorful AMD motherboards** (tested on the **CVN B650M Gaming Frozen V14**, with broad support across B650/B850/X870 series), providing RGB lighting and fan curve management.
+Hardware control utility for **Colorful AMD motherboards** (tested on the **CVN B650M Gaming Frozen V14**, with broad support across B650/B850/X870 series), providing RGB lighting and fan curve management.
 
 ## Features
 
