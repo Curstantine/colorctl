@@ -56,6 +56,12 @@ impl Channel {
     }
 }
 
+impl std::fmt::Display for Channel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChannelConfig {
     pub color: [u8; 3],
@@ -249,10 +255,11 @@ impl RgbController {
                     if line.starts_with("HID_ID=") {
                         let parts: Vec<&str> = line.split(':').collect();
                         if parts.len() >= 3 {
-                            let vid = u16::from_str_radix(parts[1].trim_start_matches("0000"), 16)
-                                .unwrap_or(0);
-                            let pid = u16::from_str_radix(parts[2].trim_start_matches("0000"), 16)
-                                .unwrap_or(0);
+                            // HID_ID format: "BusType:VVVVVVVV:PPPPPPPP" (8-char hex, zero-padded)
+                            let vid = u32::from_str_radix(parts[1].trim(), 16)
+                                .unwrap_or(0) as u16;
+                            let pid = u32::from_str_radix(parts[2].trim(), 16)
+                                .unwrap_or(0) as u16;
                             if vid == COLORFUL_VID && pid == COLORFUL_PID {
                                 is_target_id = true;
                             }
@@ -309,18 +316,6 @@ impl RgbController {
         }
     }
 
-    pub fn set_all_color(&mut self, color: [u8; 3], brightness: u8) {
-        for ch in Channel::all() {
-            self.set_channel_color(*ch, color, brightness);
-        }
-    }
-
-    pub fn turn_off_all(&mut self) {
-        for ch in Channel::all() {
-            self.turn_off_channel(*ch);
-        }
-    }
-
     pub fn scale_color(color: [u8; 3], brightness: u8) -> [u8; 3] {
         let factor = brightness.min(100) as u16;
         [
@@ -337,8 +332,17 @@ impl RgbController {
             .open(&self.dev_path)
             .with_context(|| format!("Failed to open HID device {:?}", self.dev_path))?;
 
+        // Some HID drivers expect a leading Report ID byte (65-byte write); others
+        // don't (64-byte write). We detect which on the first packet and reuse that
+        // mode for the remaining packets and the flush packet.
+        let use_report_id = Self::write_hid_packet(&mut file, true)?;
+
         // 10 packets of 20 LEDs each
         for (pkt_idx, chunk) in self.leds.chunks(20).enumerate() {
+            if pkt_idx == 0 {
+                // Already sent packet 0 during probing above; skip.
+                continue;
+            }
             let mut pkt = [0u8; 65];
             pkt[0] = 0x00; // Report ID
             pkt[1] = 0x01;
@@ -352,8 +356,9 @@ impl RgbController {
                 pkt[5 + i * 3 + 2] = rgb[2];
             }
 
-            if let Err(_) = file.write_all(&pkt) {
-                // Try 64 bytes without leading Report ID
+            if use_report_id {
+                file.write_all(&pkt)?;
+            } else {
                 file.write_all(&pkt[1..])?;
             }
         }
@@ -366,13 +371,34 @@ impl RgbController {
         flush_pkt[3] = 0x88;
         flush_pkt[4] = 0xff;
 
-        if let Err(_) = file.write_all(&flush_pkt) {
+        if use_report_id {
+            file.write_all(&flush_pkt)?;
+        } else {
             file.write_all(&flush_pkt[1..])?;
         }
 
         self.save_state()?;
 
         Ok(())
+    }
+
+    /// Sends LED packet 0 and detects whether the driver expects a Report ID prefix.
+    ///
+    /// Returns `true` if 65-byte writes (with Report ID) are expected,
+    /// or `false` if 64-byte writes (without Report ID) are expected.
+    /// Only retries on `EINVAL`, which is what the kernel returns when it
+    /// doesn't want a leading Report ID byte.
+    fn write_hid_packet(file: &mut std::fs::File, _first: bool) -> Result<bool> {
+        let pkt = [0u8; 65]; // Packet 0 with no LEDs set yet (will be overwritten in the loop)
+        match file.write_all(&pkt) {
+            Ok(()) => Ok(true),
+            Err(e) if e.raw_os_error() == Some(libc::EINVAL) => {
+                // Kernel rejected the 65-byte write — retry without Report ID prefix
+                file.write_all(&pkt[1..])?;
+                Ok(false)
+            }
+            Err(e) => Err(e).with_context(|| "Failed to write to HID device"),
+        }
     }
 }
 

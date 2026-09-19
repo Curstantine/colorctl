@@ -1,5 +1,5 @@
 use std::fs::{self, OpenOptions};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 #[inline]
@@ -9,11 +9,16 @@ pub const fn pct(p: u8) -> u8 {
     ((p as u32 * 255 + 99) / 100) as u8
 }
 
+/// Converts a raw PWM value (0-255) back to an approximate percentage (0-100)
+#[inline]
+pub const fn pwm_to_pct(pwm: u8) -> u8 {
+    ((pwm as u16 * 100 + 127) / 255) as u8
+}
+
 #[inline]
 pub fn is_root() -> bool {
-    fs::metadata("/proc/self")
-        .map(|m| m.uid() == 0)
-        .unwrap_or(false)
+    // SAFETY: geteuid() is always safe to call — no side effects, no pointers.
+    unsafe { libc::geteuid() == 0 }
 }
 
 pub fn resolve_state_path(filename: &str) -> PathBuf {
@@ -34,10 +39,10 @@ pub fn resolve_state_path(filename: &str) -> PathBuf {
         }
     }
 
-    // 2. If running as root, ensure /var/lib/colorctl exists (0777) and use sys_file
+    // 2. If running as root, ensure /var/lib/colorctl exists (0755) and use sys_file
     if is_root() {
         if fs::create_dir_all(sys_dir).is_ok() {
-            let _ = fs::set_permissions(sys_dir, fs::Permissions::from_mode(0o777));
+            let _ = fs::set_permissions(sys_dir, fs::Permissions::from_mode(0o755));
             return sys_file;
         }
     }
@@ -71,7 +76,7 @@ pub fn ensure_dir_permissions(path: &Path) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
         if is_root() && parent == Path::new("/var/lib/colorctl") {
-            let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o777));
+            let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o755));
         }
     }
     Ok(())

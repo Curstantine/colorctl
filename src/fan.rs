@@ -2,6 +2,10 @@ use anyhow::{Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 
+/// Nuvoton NCT5584D chip ID (upper 12 bits identify the family).
+/// Lower nibble is a stepping/revision that may vary.
+pub const NCT5584D_CHIP_ID: u16 = 0xD42A;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FanHeader {
     Cpu,     // CPU_FAN (Bank 2)
@@ -115,6 +119,18 @@ impl SuperIo {
                 );
             }
         };
+
+        // Verify this is a Nuvoton NCT5584D (or close family member).
+        // Upper 12 bits identify the chip family; lower nibble is a revision stepping.
+        if (chip_id >> 4) != (NCT5584D_CHIP_ID >> 4) {
+            bail!(
+                "Unsupported Super I/O chip detected (ID: 0x{:04X}). \
+                 colorctl requires a Nuvoton NCT5584D (ID: 0x{:04X}). \
+                 Running on an incompatible chip could corrupt hardware registers.",
+                chip_id,
+                NCT5584D_CHIP_ID
+            );
+        }
 
         // Disable IO space lock
         Self::disable_io_space_lock(&mut backend, reg_port, val_port)?;

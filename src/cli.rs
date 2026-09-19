@@ -78,7 +78,7 @@ pub enum RgbAction {
         channel: Vec<RgbTarget>,
 
         /// Brightness percentage (0-100)
-        #[arg(short = 'b', long, default_value = "100")]
+        #[arg(short = 'b', long, default_value = "100", value_parser = clap::value_parser!(u8).range(0..101))]
         brightness: u8,
     },
     /// Turn off RGB lighting
@@ -193,6 +193,16 @@ pub fn parse_curve_points(s: &str) -> Result<[(u8, u8); 4], String> {
         return Err("expected exactly 4 points, got more than 4".to_string());
     }
 
+    // NCT5584D SmartFan hardware requires strictly ascending temperature thresholds.
+    for i in 1..4 {
+        if points[i].0 <= points[i - 1].0 {
+            return Err(format!(
+                "temperature points must be strictly increasing: point {} ({}°C) is not greater than point {} ({}°C)",
+                i + 1, points[i].0, i, points[i - 1].0
+            ));
+        }
+    }
+
     Ok(points)
 }
 
@@ -207,11 +217,11 @@ pub enum FanAction {
         fan: FanTarget,
 
         /// Speed percentage (0-100)
-        #[arg(short = 'p', long, value_parser = clap::value_parser!(u8).range(0..101))]
+        #[arg(short = 'p', long, value_parser = clap::value_parser!(u8).range(0..101), conflicts_with = "pwm")]
         percent: Option<u8>,
 
         /// Raw PWM duty cycle (0-255)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "percent")]
         pwm: Option<u8>,
     },
     /// Configure 4-point SmartFan temperature curve or apply a built-in profile
@@ -221,11 +231,11 @@ pub enum FanAction {
         fan: FanTarget,
 
         /// 4 temperature-speed points in format: 'T1:P1,T2:P2,T3:P3,T4:P4' (e.g. '30:20,50:40,70:70,85:100')
-        #[arg(short = 'p', long, value_parser = parse_curve_points)]
+        #[arg(short = 'p', long, value_parser = parse_curve_points, conflicts_with = "profile")]
         points: Option<[(u8, u8); 4]>,
 
         /// Built-in profile: 'quiet', 'standard', or 'full'
-        #[arg(short = 'P', long, value_enum)]
+        #[arg(short = 'P', long, value_enum, conflicts_with = "points")]
         profile: Option<FanProfile>,
     },
 }
