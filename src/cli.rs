@@ -73,9 +73,9 @@ pub enum RgbAction {
         #[arg(short = 'C', long)]
         color: String,
 
-        /// Target RGB channel
-        #[arg(short = 'c', long, value_enum, default_value = "all")]
-        channel: RgbTarget,
+        /// Target RGB channel(s)
+        #[arg(short = 'c', long, value_enum, value_delimiter = ',', default_value = "all")]
+        channel: Vec<RgbTarget>,
 
         /// Brightness percentage (0-100)
         #[arg(short = 'b', long, default_value = "100")]
@@ -83,9 +83,9 @@ pub enum RgbAction {
     },
     /// Turn off RGB lighting
     Off {
-        /// Target RGB channel
-        #[arg(short = 'c', long, value_enum, default_value = "all")]
-        channel: RgbTarget,
+        /// Target RGB channel(s)
+        #[arg(short = 'c', long, value_enum, value_delimiter = ',', default_value = "all")]
+        channel: Vec<RgbTarget>,
     },
 }
 

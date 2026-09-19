@@ -1,13 +1,16 @@
 use anyhow::{Context, Result, bail};
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use crate::utils;
 
 pub const COLORFUL_VID: u16 = 0x2f4c;
 pub const COLORFUL_PID: u16 = 0x1000;
 pub const TOTAL_LEDS: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Channel {
     Led,   // Onboard Motherboard RGB (18 LEDs, index 0..17)
     Rgb1,  // 12V_1 (1 LED, index 18)
@@ -53,22 +56,179 @@ impl Channel {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelConfig {
+    pub color: [u8; 3],
+    pub brightness: u8,
+    pub enabled: bool,
+}
+
+impl Default for ChannelConfig {
+    fn default() -> Self {
+        Self {
+            color: [0, 0, 0],
+            brightness: 0,
+            enabled: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RgbState {
+    pub channels: HashMap<Channel, ChannelConfig>,
+}
+
+impl Default for RgbState {
+    fn default() -> Self {
+        let mut channels = HashMap::new();
+        for ch in Channel::all() {
+            channels.insert(*ch, ChannelConfig::default());
+        }
+        Self { channels }
+    }
+}
+
+impl RgbState {
+    pub const MAGIC: &'static [u8; 4] = b"CCTL";
+    pub const VERSION: u8 = 1;
+
+    /// Serializes state into a compact 35-byte binary format:
+    /// [0..4]: b"CCTL" magic bytes
+    /// [4]: version (1)
+    /// [5..35]: 6 channels * 5 bytes (R, G, B, Brightness, Enabled)
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(5 + Channel::all().len() * 5);
+        bytes.extend_from_slice(Self::MAGIC);
+        bytes.push(Self::VERSION);
+
+        for ch in Channel::all() {
+            let cfg = self.channels.get(ch).cloned().unwrap_or_default();
+            bytes.push(cfg.color[0]);
+            bytes.push(cfg.color[1]);
+            bytes.push(cfg.color[2]);
+            bytes.push(cfg.brightness);
+            bytes.push(if cfg.enabled { 1 } else { 0 });
+        }
+
+        bytes
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < 5 + Channel::all().len() * 5 {
+            return None;
+        }
+        if &bytes[0..4] != Self::MAGIC || bytes[4] != Self::VERSION {
+            return None;
+        }
+
+        let mut channels = HashMap::new();
+        let mut offset = 5;
+        for ch in Channel::all() {
+            let r = bytes[offset];
+            let g = bytes[offset + 1];
+            let b = bytes[offset + 2];
+            let brightness = bytes[offset + 3];
+            let enabled = bytes[offset + 4] != 0;
+            offset += 5;
+
+            channels.insert(
+                *ch,
+                ChannelConfig {
+                    color: [r, g, b],
+                    brightness,
+                    enabled,
+                },
+            );
+        }
+
+        Some(Self { channels })
+    }
+
+    pub fn to_leds(&self) -> Vec<[u8; 3]> {
+        let mut leds = vec![[0, 0, 0]; TOTAL_LEDS];
+        for ch in Channel::all() {
+            if let Some(cfg) = self.channels.get(ch) {
+                if cfg.enabled {
+                    let scaled = RgbController::scale_color(cfg.color, cfg.brightness);
+                    for i in ch.led_range() {
+                        leds[i] = scaled;
+                    }
+                }
+            }
+        }
+        leds
+    }
+}
+
 pub struct RgbController {
     dev_path: PathBuf,
+    state_path: PathBuf,
+    state: RgbState,
     leds: Vec<[u8; 3]>,
 }
 
 impl RgbController {
     pub fn find() -> Result<Self> {
         let dev_path = Self::find_device_path()?;
+        let (state_path, state) = Self::load_state();
+        let leds = state.to_leds();
         Ok(Self {
             dev_path,
-            leds: vec![[0, 0, 0]; TOTAL_LEDS],
+            state_path,
+            state,
+            leds,
         })
     }
 
     pub fn device_path(&self) -> &Path {
         &self.dev_path
+    }
+
+    pub fn state_path(&self) -> &Path {
+        &self.state_path
+    }
+
+    pub fn get_channel_config(&self, channel: Channel) -> ChannelConfig {
+        self.state
+            .channels
+            .get(&channel)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn resolve_state_path() -> PathBuf {
+        utils::resolve_state_path("rgb.state")
+    }
+
+    pub fn load_state() -> (PathBuf, RgbState) {
+        let path = Self::resolve_state_path();
+        if path.is_file() {
+            if let Ok(bytes) = fs::read(&path) {
+                if let Some(state) = RgbState::from_bytes(&bytes) {
+                    return (path, state);
+                }
+            }
+        }
+
+        (path, RgbState::default())
+    }
+
+    pub fn save_state(&self) -> Result<()> {
+        utils::ensure_dir_permissions(&self.state_path).with_context(|| {
+            format!("Failed to create state directory for {:?}", self.state_path)
+        })?;
+
+        fs::write(&self.state_path, self.state.to_bytes())
+            .with_context(|| format!("Failed to write RGB state to {:?}", self.state_path))?;
+
+        utils::set_world_writable(&self.state_path).with_context(|| {
+            format!(
+                "Failed to set world-writable permissions for {:?}",
+                self.state_path
+            )
+        })?;
+
+        Ok(())
     }
 
     pub fn find_device_path() -> Result<PathBuf> {
@@ -121,20 +281,47 @@ impl RgbController {
     }
 
     pub fn set_channel_color(&mut self, channel: Channel, color: [u8; 3], brightness: u8) {
+        self.state.channels.insert(
+            channel,
+            ChannelConfig {
+                color,
+                brightness,
+                enabled: true,
+            },
+        );
         let scaled_color = Self::scale_color(color, brightness);
         for i in channel.led_range() {
             self.leds[i] = scaled_color;
         }
     }
 
-    pub fn set_all_color(&mut self, color: [u8; 3], brightness: u8) {
-        let scaled_color = Self::scale_color(color, brightness);
-        for led in &mut self.leds {
-            *led = scaled_color;
+    pub fn turn_off_channel(&mut self, channel: Channel) {
+        self.state.channels.insert(
+            channel,
+            ChannelConfig {
+                color: [0, 0, 0],
+                brightness: 0,
+                enabled: false,
+            },
+        );
+        for i in channel.led_range() {
+            self.leds[i] = [0, 0, 0];
         }
     }
 
-    fn scale_color(color: [u8; 3], brightness: u8) -> [u8; 3] {
+    pub fn set_all_color(&mut self, color: [u8; 3], brightness: u8) {
+        for ch in Channel::all() {
+            self.set_channel_color(*ch, color, brightness);
+        }
+    }
+
+    pub fn turn_off_all(&mut self) {
+        for ch in Channel::all() {
+            self.turn_off_channel(*ch);
+        }
+    }
+
+    pub fn scale_color(color: [u8; 3], brightness: u8) -> [u8; 3] {
         let factor = brightness.min(100) as u16;
         [
             ((color[0] as u16 * factor) / 100) as u8,
@@ -183,6 +370,8 @@ impl RgbController {
             file.write_all(&flush_pkt[1..])?;
         }
 
+        self.save_state()?;
+
         Ok(())
     }
 }
@@ -212,5 +401,88 @@ pub fn parse_color(s: &str) -> Result<[u8; 3]> {
         bail!(
             "Invalid color format '{s}'. Expected hex (e.g. 'ff00aa', '#00ff00') or name ('red', 'blue', 'green', 'white', 'off')"
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rgb_state_channel_preservation() {
+        let mut state = RgbState::default();
+        for ch in Channel::all() {
+            assert!(!state.channels.get(ch).unwrap().enabled);
+        }
+
+        // Set 5V_1 to red
+        state.channels.insert(
+            Channel::Argb1,
+            ChannelConfig {
+                color: [255, 0, 0],
+                brightness: 100,
+                enabled: true,
+            },
+        );
+
+        // Set 5V_2 to blue
+        state.channels.insert(
+            Channel::Argb2,
+            ChannelConfig {
+                color: [0, 0, 255],
+                brightness: 80,
+                enabled: true,
+            },
+        );
+
+        // 5V_1 must still be red and enabled!
+        let argb1 = state.channels.get(&Channel::Argb1).unwrap();
+        assert!(argb1.enabled);
+        assert_eq!(argb1.color, [255, 0, 0]);
+
+        // 5V_2 must be blue and enabled!
+        let argb2 = state.channels.get(&Channel::Argb2).unwrap();
+        assert!(argb2.enabled);
+        assert_eq!(argb2.color, [0, 0, 255]);
+
+        // Check the generated LED buffer
+        let leds = state.to_leds();
+        for i in Channel::Argb1.led_range() {
+            assert_eq!(leds[i], [255, 0, 0]);
+        }
+        let expected_blue = RgbController::scale_color([0, 0, 255], 80);
+        for i in Channel::Argb2.led_range() {
+            assert_eq!(leds[i], expected_blue);
+        }
+        for i in Channel::Led.led_range() {
+            assert_eq!(leds[i], [0, 0, 0]);
+        }
+    }
+
+    #[test]
+    fn test_rgb_state_binary_serialization() {
+        let mut state = RgbState::default();
+        state.channels.insert(
+            Channel::Argb1,
+            ChannelConfig {
+                color: [255, 0, 0],
+                brightness: 100,
+                enabled: true,
+            },
+        );
+        let bytes = state.to_bytes();
+        assert_eq!(bytes.len(), 35);
+        assert_eq!(&bytes[0..4], b"CCTL");
+        assert_eq!(bytes[4], 1);
+
+        let deserialized = RgbState::from_bytes(&bytes).unwrap();
+        let cfg = deserialized.channels.get(&Channel::Argb1).unwrap();
+        assert!(cfg.enabled);
+        assert_eq!(cfg.color, [255, 0, 0]);
+        assert_eq!(cfg.brightness, 100);
+
+        // Invalid magic / truncated bytes return None
+        assert!(RgbState::from_bytes(&[0, 1, 2]).is_none());
+        assert!(RgbState::from_bytes(&[b'X', b'X', b'X', b'X', 1]).is_none());
     }
 }

@@ -33,10 +33,25 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
             Ok(ctrl) => {
                 println!("Colorful RGB Controller detected:");
                 println!("  Device Path: {:?}", ctrl.device_path());
-                println!("  Channels available:");
+                println!("  State File:  {:?}", ctrl.state_path());
+                println!("  Channels:");
                 for ch in Channel::all() {
                     let range = ch.led_range();
-                    println!("    - {:<28} ({} LEDs)", ch.name(), range.end - range.start);
+                    let count = range.end - range.start;
+                    let cfg = ctrl.get_channel_config(*ch);
+                    if cfg.enabled {
+                        println!(
+                            "    - {:<28} ({:>2} LEDs) : #{:02x}{:02x}{:02x} ({}%)",
+                            ch.name(),
+                            count,
+                            cfg.color[0],
+                            cfg.color[1],
+                            cfg.color[2],
+                            cfg.brightness
+                        );
+                    } else {
+                        println!("    - {:<28} ({:>2} LEDs) : off", ch.name(), count);
+                    }
                 }
             }
             Err(e) => {
@@ -54,17 +69,33 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
                 "Failed to connect to RGB controller. Is the RGB controller enabled in BIOS?",
             )?;
 
-            if channel == RgbTarget::All {
-                ctrl.set_all_color(rgb_val, brightness);
-                ctrl.apply()?;
+            let is_all = channel.contains(&RgbTarget::All);
+            let targets = if is_all {
+                Channel::all().to_vec()
+            } else {
+                let mut list = Vec::new();
+                for t in &channel {
+                    for ch in t.channels() {
+                        if !list.contains(ch) {
+                            list.push(*ch);
+                        }
+                    }
+                }
+                list
+            };
+
+            for ch in &targets {
+                ctrl.set_channel_color(*ch, rgb_val, brightness);
+            }
+            ctrl.apply()?;
+
+            if is_all {
                 println!(
                     "Set all channels to #{:02x}{:02x}{:02x} at {}% brightness",
                     rgb_val[0], rgb_val[1], rgb_val[2], brightness
                 );
             } else {
-                for ch in channel.channels() {
-                    ctrl.set_channel_color(*ch, rgb_val, brightness);
-                    ctrl.apply()?;
+                for ch in &targets {
                     println!(
                         "Set channel '{}' to #{:02x}{:02x}{:02x} at {}% brightness",
                         ch.name(),
@@ -81,14 +112,30 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
                 "Failed to connect to RGB controller. Is the RGB controller enabled in BIOS?",
             )?;
 
-            if channel == RgbTarget::All {
-                ctrl.set_all_color([0, 0, 0], 0);
-                ctrl.apply()?;
+            let is_all = channel.contains(&RgbTarget::All);
+            let targets = if is_all {
+                Channel::all().to_vec()
+            } else {
+                let mut list = Vec::new();
+                for t in &channel {
+                    for ch in t.channels() {
+                        if !list.contains(ch) {
+                            list.push(*ch);
+                        }
+                    }
+                }
+                list
+            };
+
+            for ch in &targets {
+                ctrl.turn_off_channel(*ch);
+            }
+            ctrl.apply()?;
+
+            if is_all {
                 println!("Turned off all RGB channels");
             } else {
-                for ch in channel.channels() {
-                    ctrl.set_channel_color(*ch, [0, 0, 0], 0);
-                    ctrl.apply()?;
+                for ch in &targets {
                     println!("Turned off channel '{}'", ch.name());
                 }
             }

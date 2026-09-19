@@ -211,6 +211,11 @@ in
       KERNEL=="hidraw*", ATTRS{idVendor}=="2f4c", ATTRS{idProduct}=="1000", MODE="0666", TAG+="uaccess"
     '';
 
+    # Ensure shared state directory exists with write permissions for colorctl
+    systemd.tmpfiles.rules = [
+      "d /var/lib/colorctl 0777 root root -"
+    ];
+
     # Restart service when waking up from suspend/hibernate
     powerManagement.resumeCommands = ''
       systemctl restart colorctl.service
@@ -244,15 +249,17 @@ in
 
             rgbCmds = concatMap (
               r:
-              optionals r.enable (
-                map (
-                  ch:
+              optionals (r.enable && r.channels != [ ]) [
+                (
+                  let
+                    channelsArg = concatStringsSep "," r.channels;
+                  in
                   if r.mode == "off" then
-                    "${cfg.package}/bin/colorctl rgb off --channel '${ch}'"
+                    "${cfg.package}/bin/colorctl rgb off --channel '${channelsArg}'"
                   else
-                    "${cfg.package}/bin/colorctl rgb set --channel '${ch}' --color '${r.color}' --brightness ${toString r.brightness}"
-                ) r.channels
-              )
+                    "${cfg.package}/bin/colorctl rgb set --channel '${channelsArg}' --color '${r.color}' --brightness ${toString r.brightness}"
+                )
+              ]
             ) rgbList;
           in
           pkgs.writeShellScript "colorctl-apply" (concatStringsSep "\n" (fanCmds ++ rgbCmds));
