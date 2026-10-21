@@ -124,23 +124,89 @@ The NCT5584D physically provisions up to **5 fan channels**. Different board for
 
 ---
 
-## 4. RGB Header Architecture & Differences
+## 4. RGB Header Architecture & Decompiled ODM Families
 
-### Official Driver Behavior (Dynamic)
+### 4.1 ODM Architectural Breakdown (`iGameMBoard.dll`)
 
-In the official software (`iGameMBoard.dll`), RGB configuration is queried dynamically from the microcontroller:
+Reverse engineering of Colorful's native lighting engine (`iGameMBoard.dll`) reveals that Colorful does not match boards by model names or DMI tables. Instead, the driver matches purely on **USB Vendor ID (`0x2F4C`)**, **Product ID (PID)**, and **HID Usage Page (`0xFF01`)**.
 
-- The driver retrieves an `iGameLEDDevice_Buffer` with a dynamic `ChannelCount`.
-- Channels are enumerated by index:
-    - `0`: `MBoard_LED` (onboard RGB)
-    - `121`, `122`: `12V_1`, `12V_2` (12V 4-pin RGB headers)
-    - `51` through `58`: `5V_1` through `5V_8` (5V 3-pin ARGB headers)
+Internal classes in `iGameMBoard.dll` are organized by Colorful's original design manufacturer (ODM) partners:
 
-### `colorctl` Implementation (Static Buffer)
+- **`JW_*` (JieWei / JGINYUE)**: Manufactures Colorful's AMD AM4/AM5 platform motherboards.
+- **`CQ_*` (ChangQing)**: Manufactures mainstream and budget Intel motherboards (H610, Z890, etc.).
+- **`ECS_*` (Elitegroup Computer Systems)**: Older Intel motherboards (Z390, Z490, B560).
+- **`WB_*` (WanBao)**: Select Intel motherboards (B660).
 
-`colorctl` employs a static 200-LED payload structure:
+---
 
-| Channel          | Label in `colorctl`        | Official ID        | LED Index Range | LED Count |
+### 4.2 Decompiled MCU Product ID (PID) Catalog
+
+The official suite provides dedicated dispatch routines for 17 distinct USB Product IDs under `VID: 0x2F4C`:
+
+| MCU Product ID | Internal Driver Class in `iGameMBoard.dll` | Target Motherboard Platform |
+| :--- | :--- | :--- |
+| **`0x1000`** | **`iGameMBoard_JW_X570`** | **All AMD AM5 & AM4 boards (`colorctl` & OpenRGB target)** |
+| `0x1003` | `iGameMBoard_Colorful_B460_A12` | Intel B460 Series |
+| `0x1004` | `iGameMBoard_ECS_B560` | Intel B560 Series (ECS) |
+| `0x1005` | `iGameMBoard_ECS_Z490` | Intel Z490 Series (ECS) |
+| `0x1006` | `iGameMBoard_ECS_Z390` | Intel Z390 Series (ECS) |
+| `0x1007` | `iGameMBoard_JW_B560I` | Intel B560I Mini-ITX (JW) |
+| `0x1013` / `0x1015` | `iGameMBoard_Colorful_Z590` | Intel Z590 Series |
+| `0x1017` | `iGameMBoard_B760W4` | Intel B760 Series |
+| `0x1018` | `iGameMBoard_WB_B660` | Intel B660 Series (WanBao) |
+| `0x1019` – `0x1021` | `iGameMBoard_CQ_2025_*` | 2025/2026 Intel Revisions (ChangQing) |
+| `0x1022` | `iGameMBoard_Colorful_2025_1124_0x1022` | Late 2025 Intel Refresh |
+| `0x1023` | `iGameMBoard_CQ_Z990_0x1023` | Intel Next-Gen (Z890 / Z990) |
+| `0x2000` | `iGameMBoard_CQ_H610` | Intel H610 Series |
+| `0x2002` | `iGameMBoard_CQ_HuoShen` | Colorful FireGod / Special Edition boards |
+
+---
+
+### 4.3 Verified Supported Boards for PID `0x1000`
+
+The **`0x1000`** MCU firmware (`iGameMBoard_JW_X570`) is used across Colorful's entire modern AMD lineup. The following motherboards share this exact USB HID endpoint and 200-LED payload:
+
+#### AMD AM5 (B650 / B850 / B840 / X870)
+- **CVN Series**:
+  - CVN B650 GAMING FROZEN V14 *(ATX)*
+  - CVN B650M GAMING FROZEN V14 *(mATX)*
+  - CVN B850 GAMING PRO WIFI7 V14
+  - CVN B850M ARK FROZEN V14
+  - CVN B850M GAMING FROZEN V14
+  - CVN B850I FROZEN WIFI V14 / GAMING FROZEN V14
+  - CVN X870 GAMING FROZEN V14
+- **iGame Series**:
+  - iGame B850I MINI OC V14
+- **COLORFIRE Series**:
+  - COLORFIRE B650M-MEOW WIFI ORANGE
+  - COLORFIRE B850M-A MEOW WIFI ORANGE
+  - COLORFIRE B850M-MEOW WIFI7 V14
+- **BATTLE-AX Series**:
+  - BATTLE-AX B650A-GHA WIFI V14
+  - BATTLE-AX B650M-PLUS V14 / V15 / WIFI V15
+  - BATTLE-AX B650M-WHITE WIFI V14 / V15
+  - BATTLE-AX B650M-A PLUS V14
+  - BATTLE-AX B650M-D PRO V14 / B650M-E WIFI V14 / B650M-E PRO V14 / B650M-GHA WIFI V14 / B650M-T V14
+  - BATTLE-AX B850M-PLUS PRO WIFI V14 / B850M-PLUS WIFI V14 / B850M-PLUS S WIFI7 V14
+  - BATTLE-AX B850M-GHA WIFI V14 / B850M-T WIFI V14 / B850M-E WIFI V14
+  - BATTLE-AX B840M-D PRO V14 / B840M-GHA WIFI V14
+  - BATTLE-AX X870A-GHA WIFI V14
+- **iCafe Series**:
+  - iCafe B650M-G DELUXE V14 / V14A / V15 / PLUS DELUXE V14
+  - iCafe B850M-G DELUXE V14A / V15
+
+#### AMD AM4 (A620 / A520 / X570)
+- BATTLE-AX A620M-GHA WIFI V14 / A620M-D PRO V14 / A620AM-GHA / A620AM-D PRO
+- BATTLE-AX A520M-T WIFI V15
+- CVN X570 GAMING PRO V14 / FROZEN V14
+
+---
+
+### 4.4 RGB Payload & Header Mapping
+
+The MCU expects a 200-LED payload transmitted across 10 chunks of 20 LEDs each (65-byte packets with Report ID `0x00`, header `0x01, 0x00, 0x88, <index>`, and 60 bytes of RGB data), followed by a commit/flush packet (`0x00, 0x01, 0x00, 0x88, 0xFF`):
+
+| Channel          | Label in `colorctl`        | Official Driver ID | LED Index Range | LED Count |
 | ---------------- | -------------------------- | ------------------ | --------------- | --------- |
 | `Channel::Led`   | `LED (Onboard)`            | `0` (`MBoard_LED`) | `0..18`         | 18        |
 | `Channel::Rgb1`  | `12V_1 (12V RGB Header 1)` | `121` (`12V_1`)    | `18..19`        | 1         |
@@ -149,9 +215,21 @@ In the official software (`iGameMBoard.dll`), RGB configuration is queried dynam
 | `Channel::Argb2` | `5V_2 (ARGB Header 2)`     | `52` (`5V_2`)      | `80..140`       | 60        |
 | `Channel::Argb3` | `5V_3 (ARGB Header 3)`     | `53` (`5V_3`)      | `140..200`      | 60        |
 
-- **Hardware Compatibility**:
-    - Boards with fewer physical headers (such as mATX or budget models lacking a third ARGB header or second 12V header) operate without issues: the MCU receives data for all slots, but inactive channels have no traces connecting to physical header pins.
-    - Motherboards featuring the `0x2F4C:0x1000` USB HID device will respond to lighting controls even if their Super I/O chip differs.
+- **Hardware Safety & Unpopulated Headers**:
+  Boards with fewer physical headers (e.g. mATX or budget models without a third ARGB header or second 12V header) receive the full 200-LED frame without issues. Inactive channels simply have no copper traces routed to header pins on that PCB.
+
+---
+
+### 4.5 OpenRGB Implementation Comparison
+
+| Feature | Decompiled Official Driver (`iGameMBoard.dll`) | OpenRGB Implementation (`Controllers/ColorfulMotherboardController`) |
+| :--- | :--- | :--- |
+| **Detection Method** | `VID == 0x2F4C`, `PID == 0x1000`, `UsagePage == 0xFF01` | **Exact same**: `REGISTER_HID_DETECTOR_PU(..., 0x2F4C, 0x1000, 0xFF01, 0x0001)` |
+| **Model Whitelist** | None. Pure USB HID PID detection. | None. Pure USB HID PID detection. |
+| **Device Naming** | Hardcoded generic strings (e.g. `MBoard_LED`). | **Dynamic**: DMI query automatically labels device (e.g. `Colorful CVN B650M GAMING FROZEN`). |
+| **Channel Buffer** | Fixed 200 LEDs (18 onboard, 2× 12V, 3× 60 5V ARGB). | **Exact same**: 6 zones mapped into the 200-LED byte frame. |
+| **Header Sizing** | Hardcoded 60 max per ARGB header. | **Configurable**: Users can resize each 5V ARGB header (0–60 LEDs) in OpenRGB. |
+| **Platform Scope** | All 17 PIDs (Intel + AMD). | **AMD Platform (`0x1000`)**: Complete coverage of AM5 (B650/B850/X870) and AM4 (X570/A620/A520). |
 
 ---
 
