@@ -1,6 +1,10 @@
 /target
 windows-schenanigans
 
+# Release artifacts
+/completions
+/dist
+
 # Nix
 .direnv
 /result

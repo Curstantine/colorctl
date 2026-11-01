@@ -1,0 +1,2 @@
+# Shared state directory used to persist RGB configuration across invocations.
+d /var/lib/colorctl 0777 root root -
