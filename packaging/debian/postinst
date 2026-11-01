@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+# Create the shared state directory and apply the temporary files rule.
+if command -v systemd-tmpfiles >/dev/null 2>&1; then
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/colorctl.conf || true
+else
+    install -d -m 0777 /var/lib/colorctl
+fi
+
+# Pick up the hidraw rule immediately, and re-apply it to already-connected devices.
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+    udevadm trigger --subsystem-match=hidraw || true
+fi
+
+exit 0

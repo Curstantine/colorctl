@@ -2,6 +2,35 @@
 name = "colorctl"
 version = "0.1.2"
 edition = "2024"
+authors = ["Curstantine <Curstantine@proton.me>"]
+description = "Hardware control utility for Colorful AMD motherboards, providing RGB lighting and fan curve management"
+license = "MIT"
+repository = "https://github.com/Curstantine/colorctl"
+
+[package.metadata.deb]
+maintainer = "Curstantine <Curstantine@proton.me>"
+copyright = "2026, Curstantine"
+license-file = ["LICENSE.md", "0"]
+extended-description = """\
+Hardware control utility for Colorful AMD motherboards (tested on the CVN B650M \
+Gaming Frozen V14, with broad support across B650/B850/X870 series), providing \
+RGB lighting and fan curve management.
+
+RGB control works without root through /dev/hidraw once the bundled udev rule is \
+active. Fan and pump control access the Nuvoton NCT5584D Super I/O through \
+/dev/port and therefore require root privileges."""
+depends = "$auto"
+section = "utils"
+priority = "optional"
+maintainer-scripts = "packaging/debian"
+assets = [
+    ["target/release/colorctl", "usr/bin/", "755"],
+    ["completions/colorctl.bash", "usr/share/bash-completion/completions/colorctl", "644"],
+    ["completions/_colorctl", "usr/share/zsh/vendor-completions/_colorctl", "644"],
+    ["completions/colorctl.fish", "usr/share/fish/vendor_completions.d/colorctl.fish", "644"],
+    ["packaging/colorctl.rules", "usr/lib/udev/rules.d/99-colorctl.rules", "644"],
+    ["packaging/colorctl.tmpfiles", "usr/lib/tmpfiles.d/colorctl.conf", "644"],
+]
 
 [dependencies]
 anyhow = "1.0.104"

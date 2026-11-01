@@ -9,6 +9,22 @@ Hardware control utility for **Colorful AMD motherboards** (tested on the **CVN 
 - **Shell Completions**: Native completion generation for Bash, Zsh, Fish, PowerShell, and Elvish.
 - **NixOS Module**: Declarative boot/resume service to persist fan curves and RGB settings across reboots, with automatic udev rules.
 
+## Installation
+
+### Debian / Ubuntu
+
+Download the `.deb` package from the [latest release](https://github.com/Curstantine/colorctl/releases/latest) and install it:
+
+```bash
+sudo apt install ./colorctl-*-linux-amd64.deb
+```
+
+The package installs the `colorctl` binary and shell completions, adds the udev rule that allows unprivileged users to control the RGB controller, and creates the `/var/lib/colorctl` state directory. Fan control still requires root because it accesses `/dev/port` directly.
+
+### Prebuilt tarballs
+
+Release tarballs (`colorctl-<version>-linux-x86_64.tar.gz` with the binary and completions, and `colorctl-<version>-completions.tar.gz` with only completions) can be extracted anywhere on your `PATH`.
+
 ## Usage
 
 ### RGB Control (No root required)
