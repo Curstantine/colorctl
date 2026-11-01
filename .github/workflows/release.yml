@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.3)"
+        required: true
 
 permissions:
   contents: write
@@ -16,6 +20,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -74,10 +80,31 @@ jobs:
             colorctl-${{ steps.version.outputs.version }}-completions.tar.gz
             dist/*.deb
 
+      - name: Determine tag
+        id: release_info
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Extract tag message
+        run: |
+          TAG="${{ steps.release_info.outputs.tag }}"
+          git fetch --tags --force
+          # Use subject + body (instead of %(contents)) to exclude any PGP signature block.
+          git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$TAG" > TAG_BODY.md || true
+          echo "---- Tag message for $TAG ----"
+          cat TAG_BODY.md || true
+
       - name: Attach assets to GitHub Release
         uses: softprops/action-gh-release@v3
         if: github.event_name == 'release'
         with:
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          body_path: TAG_BODY.md
+          generate_release_notes: false
           files: |
             colorctl-${{ steps.version.outputs.version }}-linux-x86_64.tar.gz
             colorctl-${{ steps.version.outputs.version }}-completions.tar.gz
