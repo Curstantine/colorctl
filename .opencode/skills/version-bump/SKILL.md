@@ -111,7 +111,7 @@ Rules for the body:
    - Push branch + tag: `git push origin <BRANCH> "v<NEW>"` (state which branch).
    - Don't push.
 2. Never run `git push` without an explicit yes from this step — not even tag-only.
-3. After pushing, publish the GitHub Release for the tag (or run `.github/workflows/release.yml` manually with that tag). The release workflow attaches the built artifacts and uses the tag message verbatim as the GitHub Release body.
+3. Remind the user that pushing the tag triggers `.github/workflows/release.yml`, which builds the artifacts and creates the GitHub Release using the tag message as its body.
 
 ## Strict rules
 
