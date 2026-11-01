@@ -1,6 +1,6 @@
-# Hardware Compatibility Guide
+﻿# Hardware Compatibility Guide
 
-This document details hardware compatibility for **colorctl**, derived directly from the project's low-level implementation and reverse engineering of the official Colorful software (`iGameCenter` / `iGC.Lite` decompiled libraries: `iGameAPI.MBoard.WinRing0`, `iGameCenter.Hardware`, and `iGameAPI.dll`).
+This document details hardware compatibility for **colorctl**, derived directly from the project's low-level implementation and analysis of the official Colorful software (`iGameCenter` / `iGC.Lite` libraries: `iGameAPI.MBoard.WinRing0`, `iGameCenter.Hardware`, and `iGameAPI.dll`).
 
 ---
 
@@ -124,11 +124,11 @@ The NCT5584D physically provisions up to **5 fan channels**. Different board for
 
 ---
 
-## 4. RGB Header Architecture & Decompiled ODM Families
+## 4. RGB Header Architecture & ODM Families
 
 ### 4.1 ODM Architectural Breakdown (`iGameMBoard.dll`)
 
-Reverse engineering of Colorful's native lighting engine (`iGameMBoard.dll`) reveals that Colorful does not match boards by model names or DMI tables. Instead, the driver matches purely on **USB Vendor ID (`0x2F4C`)**, **Product ID (PID)**, and **HID Usage Page (`0xFF01`)**.
+Analysis of Colorful's native lighting engine (`iGameMBoard.dll`) reveals that Colorful does not match boards by model names or DMI tables. Instead, the driver matches purely on **USB Vendor ID (`0x2F4C`)**, **Product ID (PID)**, and **HID Usage Page (`0xFF01`)**.
 
 Internal classes in `iGameMBoard.dll` are organized by Colorful's original design manufacturer (ODM) partners:
 
@@ -139,7 +139,7 @@ Internal classes in `iGameMBoard.dll` are organized by Colorful's original desig
 
 ---
 
-### 4.2 Decompiled MCU Product ID (PID) Catalog
+### 4.2 MCU Product ID (PID) Catalog
 
 The official suite provides dedicated dispatch routines for 17 distinct USB Product IDs under `VID: 0x2F4C`:
 
@@ -222,7 +222,7 @@ The MCU expects a 200-LED payload transmitted across 10 chunks of 20 LEDs each (
 
 ### 4.5 OpenRGB Implementation Comparison
 
-| Feature | Decompiled Official Driver (`iGameMBoard.dll`) | OpenRGB Implementation (`Controllers/ColorfulMotherboardController`) |
+| Feature | Official Driver (`iGameMBoard.dll`) | OpenRGB Implementation (`Controllers/ColorfulMotherboardController`) |
 | :--- | :--- | :--- |
 | **Detection Method** | `VID == 0x2F4C`, `PID == 0x1000`, `UsagePage == 0xFF01` | **Exact same**: `REGISTER_HID_DETECTOR_PU(..., 0x2F4C, 0x1000, 0xFF01, 0x0001)` |
 | **Model Whitelist** | None. Pure USB HID PID detection. | None. Pure USB HID PID detection. |
