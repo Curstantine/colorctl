@@ -99,11 +99,7 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
                 for ch in &targets {
                     println!(
                         "Set channel '{}' to #{:02x}{:02x}{:02x} at {}% brightness",
-                        ch,
-                        rgb_val[0],
-                        rgb_val[1],
-                        rgb_val[2],
-                        brightness
+                        ch, rgb_val[0], rgb_val[1], rgb_val[2], brightness
                     );
                 }
             }
@@ -134,8 +130,8 @@ fn handle_rgb(args: RgbArgs) -> Result<()> {
 }
 
 fn handle_fan(args: FanArgs) -> Result<()> {
-    let mut sio = SuperIo::open()
-        .context("Failed to access Super I/O chip")?;
+    let mut sio =
+        SuperIo::open(args.skip_chip_id_check).context("Failed to access Super I/O chip")?;
 
     match args.action {
         FanAction::Status => {
@@ -190,7 +186,10 @@ fn handle_fan(args: FanArgs) -> Result<()> {
                         for (i, (t, p)) in parsed_points.iter().enumerate() {
                             println!(
                                 "    Point {}: {} °C -> PWM {} (~{}%)",
-                                i + 1, t, p, pwm_to_pct(*p)
+                                i + 1,
+                                t,
+                                p,
+                                pwm_to_pct(*p)
                             );
                         }
                     }
@@ -209,13 +208,18 @@ fn handle_fan(args: FanArgs) -> Result<()> {
                         for (i, (t, p)) in curve.iter().enumerate() {
                             println!(
                                 "    Point {}: {} °C -> PWM {} (~{}%)",
-                                i + 1, t, p, pwm_to_pct(*p)
+                                i + 1,
+                                t,
+                                p,
+                                pwm_to_pct(*p)
                             );
                         }
                     }
                 }
                 // Prevented by clap's conflicts_with at parse time.
-                _ => unreachable!("clap conflicts_with prevents both or neither --points/--profile"),
+                _ => {
+                    unreachable!("clap conflicts_with prevents both or neither --points/--profile")
+                }
             }
         }
     }

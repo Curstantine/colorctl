@@ -95,7 +95,7 @@ pub struct SuperIo {
 }
 
 impl SuperIo {
-    pub fn open() -> Result<Self> {
+    pub fn open(skip_chip_id_check: bool) -> Result<Self> {
         let mut backend = Backend::new()?;
 
         // Probing 0x4E/0x4F then 0x2E/0x2F
@@ -123,12 +123,19 @@ impl SuperIo {
         // Verify this is a Nuvoton NCT5584D (or close family member).
         // Upper 12 bits identify the chip family; lower nibble is a revision stepping.
         if (chip_id >> 4) != (NCT5584D_CHIP_ID >> 4) {
-            bail!(
-                "Unsupported Super I/O chip detected (ID: 0x{:04X}). \
-                 colorctl requires a Nuvoton NCT5584D (ID: 0x{:04X}). \
-                 Running on an incompatible chip could corrupt hardware registers.",
-                chip_id,
-                NCT5584D_CHIP_ID
+            if !skip_chip_id_check {
+                bail!(
+                    "Unsupported Super I/O chip detected (ID: 0x{:04X}). \\
+                     colorctl requires a Nuvoton NCT5584D (ID: 0x{:04X}). \\
+                     Running on an incompatible chip could corrupt hardware registers.",
+                    chip_id,
+                    NCT5584D_CHIP_ID
+                );
+            }
+
+            eprintln!(
+                "Warning: Skipping Super I/O chip ID check for unsupported chip 0x{:04X}; this is not recommended and may corrupt hardware registers.",
+                chip_id
             );
         }
 

@@ -74,7 +74,13 @@ pub enum RgbAction {
         color: String,
 
         /// Target RGB channel(s)
-        #[arg(short = 'c', long, value_enum, value_delimiter = ',', default_value = "all")]
+        #[arg(
+            short = 'c',
+            long,
+            value_enum,
+            value_delimiter = ',',
+            default_value = "all"
+        )]
         channel: Vec<RgbTarget>,
 
         /// Brightness percentage (0-100)
@@ -84,13 +90,23 @@ pub enum RgbAction {
     /// Turn off RGB lighting
     Off {
         /// Target RGB channel(s)
-        #[arg(short = 'c', long, value_enum, value_delimiter = ',', default_value = "all")]
+        #[arg(
+            short = 'c',
+            long,
+            value_enum,
+            value_delimiter = ',',
+            default_value = "all"
+        )]
         channel: Vec<RgbTarget>,
     },
 }
 
 #[derive(Args, Debug)]
 pub struct FanArgs {
+    /// Skip Super I/O chip ID validation (not recommended)
+    #[arg(long, global = true)]
+    pub skip_chip_id_check: bool,
+
     #[command(subcommand)]
     pub action: FanAction,
 }
@@ -198,7 +214,10 @@ pub fn parse_curve_points(s: &str) -> Result<[(u8, u8); 4], String> {
         if points[i].0 <= points[i - 1].0 {
             return Err(format!(
                 "temperature points must be strictly increasing: point {} ({}°C) is not greater than point {} ({}°C)",
-                i + 1, points[i].0, i, points[i - 1].0
+                i + 1,
+                points[i].0,
+                i,
+                points[i - 1].0
             ));
         }
     }
