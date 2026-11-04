@@ -145,7 +145,7 @@ The official suite provides dedicated dispatch routines for 17 distinct USB Prod
 
 | MCU Product ID | Internal Driver Class in `iGameMBoard.dll` | Target Motherboard Platform |
 | :--- | :--- | :--- |
-| **`0x1000`** | **`iGameMBoard_JW_X570`** | **All AMD AM5 & AM4 boards (`colorctl` & OpenRGB target)** |
+| **`0x1000`** | **`iGameMBoard_JW_X570`** | **All AMD AM5 & AM4 boards (`colorctl` target)** |
 | `0x1003` | `iGameMBoard_Colorful_B460_A12` | Intel B460 Series |
 | `0x1004` | `iGameMBoard_ECS_B560` | Intel B560 Series (ECS) |
 | `0x1005` | `iGameMBoard_ECS_Z490` | Intel Z490 Series (ECS) |
@@ -220,18 +220,6 @@ The MCU expects a 200-LED payload transmitted across 10 chunks of 20 LEDs each (
 
 ---
 
-### 4.5 OpenRGB Implementation Comparison
-
-| Feature | Official Driver (`iGameMBoard.dll`) | OpenRGB Implementation (`Controllers/ColorfulMotherboardController`) |
-| :--- | :--- | :--- |
-| **Detection Method** | `VID == 0x2F4C`, `PID == 0x1000`, `UsagePage == 0xFF01` | **Exact same**: `REGISTER_HID_DETECTOR_PU(..., 0x2F4C, 0x1000, 0xFF01, 0x0001)` |
-| **Model Whitelist** | None. Pure USB HID PID detection. | None. Pure USB HID PID detection. |
-| **Device Naming** | Hardcoded generic strings (e.g. `MBoard_LED`). | **Dynamic**: DMI query automatically labels device (e.g. `Colorful CVN B650M GAMING FROZEN`). |
-| **Channel Buffer** | Fixed 200 LEDs (18 onboard, 2× 12V, 3× 60 5V ARGB). | **Exact same**: 6 zones mapped into the 200-LED byte frame. |
-| **Header Sizing** | Hardcoded 60 max per ARGB header. | **Configurable**: Users can resize each 5V ARGB header (0–60 LEDs) in OpenRGB. |
-| **Platform Scope** | All 17 PIDs (Intel + AMD). | **AMD Platform (`0x1000`)**: Complete coverage of AM5 (B650/B850/X870) and AM4 (X570/A620/A520). |
-
----
 
 ## 5. Unsupported Super I/O Chips (Official Software Breakdown)
 

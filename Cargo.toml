@@ -1,6 +1,6 @@
 [package]
 name = "colorctl"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 authors = ["Curstantine <Curstantine@proton.me>"]
 description = "Hardware control utility for Colorful AMD motherboards, providing RGB lighting and fan curve management"
