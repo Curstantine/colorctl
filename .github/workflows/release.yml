@@ -123,7 +123,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release_info.outputs.tag }}
-          name: colorctl ${{ steps.release_info.outputs.tag }}
+          name: ${{ steps.release_info.outputs.tag }}
           body_path: TAG_BODY.md
           draft: false
           prerelease: false
